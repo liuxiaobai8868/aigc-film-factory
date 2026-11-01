@@ -1,0 +1,22 @@
+# 密钥
+.env
+*.key
+
+# 系统与缓存
+.DS_Store
+__pycache__/
+*.pyc
+
+# 用户项目：只提交示例项目
+projects/*
+!projects/_示例-雨夜还钥匙/
+
+# 媒体产物（出图、出片、预演帧）
+*.mp4
+*.mov
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.webp
+!docs/assets/*.png

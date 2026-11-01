@@ -1,0 +1,163 @@
+{
+  "_说明": "出图引擎与 API 提供方配置。engine 是出图模型（决定提示词写法，见 docs/10），provider 是接口（决定怎么调用）。同一个引擎可以走多个接口，按 providers 顺序选第一个配好密钥的。密钥只放环境变量或 .env，不写进本文件。",
+  "engines": {
+    "image25": {
+      "名称": "GPT Image（Image 2.5）",
+      "提示词代码块": "text",
+      "擅长": "人物三视图、表情、道具多态并排：复杂版式、左右方位、模糊脸椭圆、精确计数",
+      "providers": [
+        {
+          "provider": "duomi",
+          "model_env": "DUOMI_MODEL",
+          "model": "gpt-image-2.5-sunburst",
+          "size": "3840x2160",
+          "实测": "2026-10-31 实测可用；flare 是快速版，质感差，不用于交付"
+        },
+        {
+          "provider": "openai",
+          "model_env": "OPENAI_IMAGE_MODEL",
+          "model": "gpt-image-1",
+          "size": "1536x1024",
+          "实测": "按 OpenAI 官方 Images API 实现，未实测；把 OPENAI_IMAGE_MODEL 设成你账号可用的最新图像模型"
+        },
+        {
+          "provider": "compat",
+          "model_env": "COMPAT_IMAGE_MODEL",
+          "model": "gpt-image-1",
+          "size": "1536x1024",
+          "实测": "任意 OpenAI 兼容中转（设 COMPAT_BASE_URL），未实测"
+        }
+      ]
+    },
+    "banana": {
+      "名称": "Nano Banana 2 / Pro（Gemini 图像）",
+      "提示词代码块": "banana",
+      "擅长": "场景主图、场景宫格多视角、状态变体、首帧：多参考一致性、空间与夜景听话",
+      "providers": [
+        {
+          "provider": "duomi",
+          "model_env": "DUOMI_BANANA_MODEL",
+          "model": "gemini-3.1-flash-image-preview",
+          "image_size": "4K",
+          "aspect": "16:9",
+          "实测": "2026-10-31 实测 5504x3072；Pro = gemini-3-pro-image-preview"
+        },
+        {
+          "provider": "google",
+          "model_env": "GEMINI_IMAGE_MODEL",
+          "model": "gemini-3.1-flash-image-preview",
+          "image_size": "4K",
+          "aspect": "16:9",
+          "实测": "按 Gemini API generateContent 实现，未实测；Pro 用 gemini-3-pro-image-preview"
+        }
+      ]
+    },
+    "seedream": {
+      "名称": "Seedream（火山方舟 / 即梦图像）",
+      "提示词代码块": "seedream",
+      "回退代码块": "banana",
+      "擅长": "中文语境、国风与东方面孔、多参考组图；和 Seedance 同属字节系，风格衔接自然",
+      "providers": [
+        {
+          "provider": "ark",
+          "model_env": "ARK_IMAGE_MODEL",
+          "model": "doubao-seedream-4-0-250828",
+          "size": "4K",
+          "实测": "按火山方舟图片生成 API 实现，未实测；把 ARK_IMAGE_MODEL 设成控制台里开通的最新 Seedream 版本"
+        }
+      ]
+    },
+    "mj": {
+      "名称": "Midjourney",
+      "提示词代码块": "mj",
+      "擅长": "氛围与风格参考（质感最强）；不做版式、计数、左右方位",
+      "providers": [
+        {
+          "provider": "duomi",
+          "model": "midjourney-v7",
+          "实测": "2026-10-31 实测；单图上限 1456x816，放大不可用，只作风格参考"
+        }
+      ]
+    }
+  },
+  "providers": {
+    "duomi": {
+      "名称": "多米聚合平台",
+      "key_env": "DUOMI_API_KEY",
+      "base_url": "https://duomiapi.com",
+      "参考图": "只收 URL（本工具自动用上一张图出图时记下的 CDN 地址）",
+      "base_url_env": "DUOMI_BASE_URL"
+    },
+    "openai": {
+      "名称": "OpenAI 官方",
+      "key_env": "OPENAI_API_KEY",
+      "base_url_env": "OPENAI_BASE_URL",
+      "base_url": "https://api.openai.com/v1",
+      "参考图": "本地文件，multipart 上传到 /images/edits"
+    },
+    "compat": {
+      "名称": "OpenAI 兼容中转",
+      "key_env": "COMPAT_API_KEY",
+      "base_url_env": "COMPAT_BASE_URL",
+      "base_url": "",
+      "参考图": "同 openai"
+    },
+    "google": {
+      "名称": "Google Gemini API",
+      "key_env": "GEMINI_API_KEY",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta",
+      "参考图": "本地文件，base64 内联",
+      "base_url_env": "GEMINI_BASE_URL"
+    },
+    "ark": {
+      "名称": "火山方舟",
+      "key_env": "ARK_API_KEY",
+      "base_url_env": "ARK_BASE_URL",
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "参考图": "本地文件，base64 data URI"
+    }
+  },
+  "按资产类型推荐": {
+    "人物三视图": [
+      "image25",
+      "banana",
+      "seedream"
+    ],
+    "状态变体": [
+      "banana",
+      "image25",
+      "seedream"
+    ],
+    "强表情": [
+      "image25",
+      "banana"
+    ],
+    "道具": [
+      "image25",
+      "banana",
+      "seedream"
+    ],
+    "场景主图": [
+      "banana",
+      "seedream",
+      "image25"
+    ],
+    "场景宫格": [
+      "banana",
+      "image25"
+    ],
+    "站位示意图": [
+      "image25",
+      "banana"
+    ],
+    "首帧": [
+      "banana",
+      "seedream",
+      "image25"
+    ],
+    "风格参考": [
+      "mj",
+      "banana"
+    ]
+  }
+}
