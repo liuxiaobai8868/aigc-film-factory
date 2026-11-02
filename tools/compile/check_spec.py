@@ -71,7 +71,10 @@ def check(path):
                 out.append(("FAIL", f"{tag} 台词 {chars} 字 / {L:g} 秒 = {rate:.1f} 字/秒，说不完"))
             elif rate > 4.5:
                 out.append(("WARN", f"{tag} 台词 {rate:.1f} 字/秒，偏快"))
-        names = [x["name"] for x in s["assets"] if x["kind"] == "character" and x["name"]] + ["众蚊", "士兵", "男人", "哨兵", "蚊子"]
+        # 说话人：有三视图的角色 + 音色锁里写了名字的人（如"老汉：沙哑…"）+ 规格单可选的 chorus 列表（齐声的群体）
+        chorus = s.get("chorus", [])
+        names = [x["name"] for x in s["assets"] if x["kind"] == "character" and x["name"]] + \
+            [v.split("：")[0] for v in s.get("voices", []) if "：" in v] + chorus
         prev = 0
         for m in re.finditer(r"\{[^}]*\}", body):
             seg = body[prev:m.start()]
@@ -83,7 +86,7 @@ def check(path):
             if not hits:
                 continue  # 同一个人接着说（上一句的说话人）
             name = max(hits)[1]
-            if name in ("众蚊", "士兵"):
+            if name in chorus:
                 out.append(("WARN", f"{tag} 齐声没有写背对镜头或画外"))
             elif who and name not in who:
                 out.append(("FAIL", f"{tag} 说话人「{name}」不在画面里（画面里：{who}），要么让他入画，要么写明画外 / 背对镜头"))
