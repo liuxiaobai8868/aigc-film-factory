@@ -4,6 +4,20 @@
 
 **任何智能体（Codex、WorkBuddy / CodeBuddy、Cursor、Claude Code 等）在本仓库工作时，先完整读 `SKILL.md`，按它的流程与"按需加载"表执行。** 本文件只是入口。
 
+## 剧本确认之后：只走流水线（最重要）
+
+```
+python3 tools/pipeline.py selftest examples/样例-便利店   # 第一次用先自测：不花钱，产物要和标准逐字一致
+python3 tools/pipeline.py status projects/<项目>    # 看最后一行 NEXT
+python3 tools/pipeline.py run projects/<项目>       # 按固定顺序跑，遇到要处理的就停，并给出 NEXT
+```
+
+- **只照 NEXT 做**，不自己改顺序、不跳阶段、不手改生成出来的文件（`交付/01-资产提示词.md`、`交付/规格单/`、`交付/投喂包/` 都由脚本生成）。
+- 唯一要创作的是把剧本拆成 `设定.json` 和 `分镜.json`（格式与拆法 `docs/19`，照 `examples/样例-便利店/` 写），写完 `python3 tools/storyboard.py check projects/<项目>` 改到通过。
+- 唯一要"看"的是目检：逐张打开原图 / 白模拼图，按 `docs/18` 第四节清单判 pass / fix，用 `pipeline.py review` 记录。
+- `confirm`、`approve` 只在用户在对话里明确确认 / 同意花费后才执行，不能替用户做。
+- 出片后用 `python3 tools/pipeline.py qc projects/<项目> 第N条 <视频>` 审片，再按报告里的 24 分表看片打分。
+
 要点：
 - 默认两文档交付：`交付/01-资产提示词.md`（每张图标推荐出图模型）和 `交付/02-Seedance提示词.md`（每条 A 白模预演版 + B 无预演版）。用户只确认故事和剧本两次。
 - 用户项目放在 `projects/<项目名>/`；示例在 `projects/_示例-雨夜还钥匙/`。

@@ -22,6 +22,8 @@ description: AIGC 制片工厂 2.0——从一句创意或剧本到可直接投�
 | 规格单、零抽卡闸门、编译、提交 | `docs/14-多模型出片流程与零抽卡闸门.md` | 镜头规格单格式、轴线与过肩规则、闸门五步、投喂包、API 提交 |
 | 选画风、写出图提示词 | `docs/16-风格库.md` | 用户 493 张样图提炼的口味规律 + 18 个风格配方（Image 2.5 / Banana 写法）；`tools/mj_style.py` 查配方、拼对比图 |
 | 群众演员、配角群像 | `docs/17-群像方法.md` | 一张图一组 14 人群演，防撞脸；替换单个、扩组、升级成角色卡的指令模板 |
+| 剧本确认后的全部生产 | `docs/18-自动化流水线.md` | 一条命令跑完资产到投喂包；用户确认点、阶段、数据脚本格式、目检清单 |
+| 把剧本拆成数据 | `docs/19-分镜数据格式.md` | 设定.json + 分镜.json 的字段、拆法、校验器拦什么、自测 |
 | 超过 30 秒的衔接 | `docs/07-30秒以上长片衔接.md` | 跨条不漂移 |
 | 某个岗位的专业视角 | `crew/<编号>-<岗位>/SKILL.md` 与 `SOUL.md` | 25 个岗位，见 `README.md` 岗位表 |
 
@@ -30,7 +32,7 @@ description: AIGC 制片工厂 2.0——从一句创意或剧本到可直接投�
 1. **立项**：问清风格、媒介、画幅、总时长、Seedance 入口与分辨率、接了哪几家出图 API（`python3 -I tools/image_gen.py --providers`）、本机有没有 Blender 4.x + ffmpeg。有默认值的直接给默认值，一条消息问完。
 2. **① 故事确认**：没有创意时按 `docs/11` 出 3 个方案 → 用户选定后给一句话故事 + 分条大纲 + 立项默认设定。
 3. **② 剧本确认**：剧本 + 分条表（每条时长、结构、台词）。
-4. **后台一次合成**（不再停下来问用户）：
+4. **后台一次合成**（不再停下来问用户）。**默认用自动化流水线**（`docs/18`）：先 `python3 tools/pipeline.py selftest examples/样例-便利店` 自测；把剧本拆成 `设定.json` 和 `分镜.json`（`docs/19`，样例 `examples/样例-便利店/`），`python3 tools/storyboard.py check` 通过后反复 `python3 tools/pipeline.py run projects/<项目>`，只照它给的 NEXT 做，直到投喂包编完。下面各项是流水线内部做的事，手动模式时照此执行：
    - 全片视听设计：每条的镜头、景别、机位、运镜、切点、节奏、声音，每个镜头写出存在的理由；长镜头写 `**长镜头理由**`。
    - 《资产提示词》`交付/01-资产提示词.md`：出图清单带"推荐模型（理由）"列；每张图给首选和备选两个模型的代码块。
    - 白模预演：每条写镜头规格 JSON，`python3 tools/previs/render_previs.py <规格> --out 交付/预演/`（没有 Blender 则跳过，只交 B 版）。
@@ -57,6 +59,10 @@ description: AIGC 制片工厂 2.0——从一句创意或剧本到可直接投�
 | `python3 tools/prompt_lint.py <交付文档> --all` | Seedance 提示词机检（含 A/B 一致性、预演对应、长镜头理由） |
 | `python3 -I tools/image_gen.py --providers` | 查看已配置的出图接口 |
 | `python3 -I tools/image_gen.py <资产文档> --out <目录> [--dry-run]` | 按推荐模型批量出图（多米 / OpenAI / 中转 / Gemini / 火山方舟） |
+| `python3 tools/pipeline.py selftest examples/样例-便利店` | 自测：离线从样例跑到投喂包，和标准产物逐字比对 |
+| `python3 tools/storyboard.py check <项目>` | 校验 设定.json / 分镜.json，ERROR 附改法 |
+| `python3 tools/pipeline.py qc <项目> 第N条 <视频>` | 审片机检：时长、切点、分段音量、台词听写 |
+| `python3 tools/pipeline.py status\|run <项目>` | **自动化流水线**（docs/18）：资产 → 出图 → 目检 → 规格 → 自检 → 白模 → 几何 → 拼图 → 目检 → 投喂包，照 NEXT 做 |
 | `python3 tools/previs/render_previs.py <规格.json> --out <目录> [--stills-only]` | 白模预演视频 + 关键帧拼图 |
 | `python3 -I tools/compile/check_spec.py <规格单或目录>` | 零抽卡闸门 · 规格自检 |
 | `python3 tools/previs/geometry_check.py <白模规格> <规格单>` | 零抽卡闸门 · 白模几何检查（入画、大小、遮挡、头后竖直物、穿墙、越轴） |

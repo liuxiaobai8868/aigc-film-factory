@@ -1,0 +1,518 @@
+#!/usr/bin/env python3
+"""自动化流水线：剧本确认后，资产 → 出图 → 白模 → 闸门 → 投喂包，一条命令按固定顺序跑，任何智能体跑出来都一样。
+
+  python3 tools/pipeline.py status <项目目录>            看进度，最后一行 NEXT 就是下一步该做什么（智能体只照 NEXT 做）
+  python3 tools/pipeline.py run <项目目录> [--until 阶段]   从头按顺序跑；已完成且输入没变的阶段自动跳过；遇到需要人或智能体处理的就停
+  python3 tools/pipeline.py confirm <项目目录> story|script  记录用户已确认故事 / 剧本（只有用户在对话里明确确认后才执行）
+  python3 tools/pipeline.py approve <项目目录> images <张数>  记录用户批准的出图预算（只有用户在对话里明确同意花费后才执行）
+  python3 tools/pipeline.py review <项目目录> <条目> pass|fix [备注]   记录目检结论；条目见 status 里的"待目检"
+  python3 tools/pipeline.py redo <项目目录> <资产序号>        把一张不合格的图挪进废片，下次 run 重出（占用出图预算）
+  python3 tools/pipeline.py init <项目目录> <片名> <短名>     新项目（高级写法）：从 templates/project/ 拷入两个 Python 数据脚本
+  python3 tools/pipeline.py selftest examples/样例-便利店     自测：不花钱（占位图），从样例数据跑到投喂包，和标准产物逐字比对
+  python3 tools/pipeline.py qc <项目目录> <第N条> <视频文件>   审片：切点、时长、分段音量、台词听写，写 logs/审片_第N条.md
+
+阶段（顺序固定）：confirm → assets → images → asset_review → specs → previs → check_spec → geometry → framesheets
+→ previs_review → compile → report。规则和每一步的含义见 docs/18-自动化流水线.md。
+状态写在 <项目>/production.json 的 "pipeline" 和 "reviews" 里；产物与日志写在 <项目>/logs/。
+"""
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TOOLS = os.path.join(ROOT, "tools")
+PY = sys.executable
+STAGES = ["confirm", "assets", "images", "asset_review", "specs", "previs", "check_spec", "geometry", "framesheets",
+          "previs_review", "compile", "report"]
+sys.path.insert(0, TOOLS)
+
+
+class Stop(Exception):
+    """阶段没过：带一句 NEXT 指令。"""
+
+    def __init__(self, msg, next_step):
+        super().__init__(msg)
+        self.next_step = next_step
+
+
+# ---------------- 状态 ----------------
+
+def pj(proj):
+    return os.path.join(proj, "production.json")
+
+
+def load(proj):
+    p = pj(proj)
+    d = json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
+    d.setdefault("confirm", {}).setdefault("story", False)
+    d["confirm"].setdefault("script", False)
+    d.setdefault("budget", {}).setdefault("images", {"approved": 0, "used": 0})
+    d.setdefault("video_models", ["seedance"])
+    d.setdefault("pipeline", {})
+    d.setdefault("reviews", {})
+    return d
+
+
+def save(proj, d):
+    json.dump(d, open(pj(proj), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+
+def now():
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def sha(*paths):
+    h = hashlib.sha256()
+    for p in paths:
+        if os.path.isdir(p):
+            for f in sorted(os.listdir(p)):
+                if f.endswith(".json"):
+                    h.update(open(os.path.join(p, f), "rb").read())
+        elif os.path.exists(p):
+            h.update(open(p, "rb").read())
+    return h.hexdigest()[:16]
+
+
+def run(cmd, cwd=None, check=True):
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    if check and r.returncode != 0:
+        raise Stop(f"命令失败：{' '.join(os.path.basename(c) for c in cmd[:3])}\n{(r.stderr or r.stdout)[-1500:]}",
+                   "看上面的报错修好脚本，再跑 run")
+    return r
+
+
+def mark(d, stage, **kw):
+    d["pipeline"][stage] = dict(kw, done=now())
+
+
+def clips(proj):
+    sd = os.path.join(proj, "交付", "规格单")
+    return sorted((f[:-5] for f in os.listdir(sd) if f.endswith(".json")), key=lambda x: [int(n) for n in re.findall(r"\d+", x)]) \
+        if os.path.isdir(sd) else []
+
+
+def asset_table(proj):
+    import image_gen
+    return image_gen.parse_doc(os.path.join(proj, "交付", "01-资产提示词.md"))
+
+
+# ---------------- 各阶段 ----------------
+
+def json_mode(proj):
+    return os.path.exists(os.path.join(proj, "设定.json"))
+
+
+def offline(d):
+    return bool(d.get("selftest"))
+
+
+def st_confirm(proj, d):
+    miss = [k for k, n in (("story", "故事"), ("script", "剧本")) if not d["confirm"][k]]
+    if miss:
+        raise Stop("用户还没确认：" + "、".join(miss),
+                   "把故事 / 剧本发给用户确认；用户在对话里明确确认后，跑 `pipeline.py confirm <项目> story` 或 `script`")
+    need = ("设定.json", "分镜.json") if json_mode(proj) else ("预演规格/build_assets.py", "预演规格/gen_clips.py")
+    for f in need:
+        if not os.path.exists(os.path.join(proj, f)):
+            raise Stop(f"缺少 {f}", "按 docs/19 把剧本拆成 设定.json 和 分镜.json（样例 examples/样例-便利店/），"
+                                     "写完跑 `python3 tools/storyboard.py check <项目>` 直到通过")
+    mark(d, "confirm")
+
+
+def build(proj, what):
+    if json_mode(proj):
+        r = run([PY, "-I", os.path.join(TOOLS, "storyboard.py"), what, proj], check=False)
+        if r.returncode != 0:
+            raise Stop("设定.json / 分镜.json 校验没过：\n" + "\n".join(l for l in r.stdout.splitlines() if l.startswith("ERROR"))[:3000],
+                       "按每条 ERROR 后面的说明改 设定.json / 分镜.json，`python3 tools/storyboard.py check <项目>` 通过后再 run")
+        return
+    src = os.path.join(proj, "预演规格", "build_assets.py" if what == "assets" else "gen_clips.py")
+    run([PY, "-I", src], cwd=os.path.dirname(src))
+
+
+def st_assets(proj, d):
+    build(proj, "assets")
+    table = asset_table(proj)
+    errs = []
+    for n, it in table.items():
+        if "text" not in it and "banana" not in it:
+            errs.append(f"{n} {it['tag']} 没有提示词代码块")
+        if "text" in it and "STYLE:" not in it["text"]:
+            errs.append(f"{n} {it['tag']} 没有 STYLE 段（docs/16）")
+        if re.search(r"grain|pores|blemish|halation", it.get("text", ""), re.I):
+            errs.append(f"{n} {it['tag']} 写了颗粒 / 毛孔词，Image 2.5 会照字面加噪点（docs/16 第二节）")
+        for dep in it["deps"]:
+            if dep not in table or dep >= n:
+                errs.append(f"{n} {it['tag']} 依赖 {dep} 不存在或排在后面")
+    if errs:
+        raise Stop("资产文档不合格：\n  " + "\n  ".join(errs), "改 预演规格/build_assets.py 后重跑 run")
+    mark(d, "assets", count=len(table), hash=sha(os.path.join(proj, "交付", "01-资产提示词.md")))
+
+
+def st_images(proj, d):
+    table = asset_table(proj)
+    out = os.path.join(proj, "交付", "资产图")
+    os.makedirs(out, exist_ok=True)
+    missing = [n for n, it in table.items() if not os.path.exists(os.path.join(out, it["file"]))]
+    b = d["budget"]["images"]
+    if missing and offline(d):  # 自测：不花钱，用占位图
+        from PIL import Image, ImageDraw
+        for n in missing:
+            im = Image.new("RGB", (2048, 1152), (90, 90, 96))
+            ImageDraw.Draw(im).text((40, 40), f"PLACEHOLDER {n}", fill=(255, 255, 255))
+            im.save(os.path.join(out, table[n]["file"]))
+        missing = []
+    if missing:
+        left = b["approved"] - b["used"]
+        if left < len(missing):
+            raise Stop(f"还缺 {len(missing)} 张图（序号 {missing}），出图预算剩 {left} 张",
+                       f"告诉用户要出 {len(missing)} 张、走哪个接口、大约多少钱（`python3 -I tools/image_gen.py <资产文档> --out <资产图> --dry-run`）；"
+                       f"用户明确同意后跑 `pipeline.py approve <项目> images {len(missing)}`")
+        r = run([PY, os.path.join(TOOLS, "image_gen.py"), os.path.join(proj, "交付", "01-资产提示词.md"), "--out", out,
+                 "--only", ",".join(map(str, missing))], check=False)
+        open(os.path.join(proj, "logs", f"出图_{datetime.date.today()}.txt"), "a", encoding="utf-8").write(r.stdout + r.stderr)
+        made = [n for n in missing if os.path.exists(os.path.join(out, table[n]["file"]))]
+        b["used"] += len(made)
+        if len(made) < len(missing):
+            save(proj, d)
+            raise Stop(f"出图失败 {sorted(set(missing) - set(made))}，见 logs/出图_*.txt", "看日志排查接口或提示词，修好后重跑 run")
+    mark(d, "images", count=len(table))
+
+
+def _img_key(it):
+    return "图:" + it["file"]
+
+
+def st_asset_review(proj, d):
+    table = asset_table(proj)
+    out = os.path.join(proj, "交付", "资产图")
+    final = os.path.join(proj, "交付", "参考图定版")
+    os.makedirs(final, exist_ok=True)
+    pending, fixes = [], []
+    for n, it in table.items():
+        p = os.path.join(out, it["file"])
+        k, h = _img_key(it), sha(p)
+        rv = d["reviews"].get(k)
+        if not rv or rv.get("hash") != h:
+            d["reviews"][k] = {"status": "pass" if offline(d) else "待目检", "hash": h, "n": n, "check": it.get("check", "")}
+            rv = d["reviews"][k]
+        if rv["status"] == "待目检":
+            pending.append((n, it))
+        elif rv["status"] == "fix":
+            fixes.append((n, it, rv.get("note", "")))
+        else:
+            shutil.copy2(p, os.path.join(final, it["file"]))
+    if pending:
+        sheet = os.path.join(proj, "logs", "待目检_资产.jpg")
+        contact_sheet([os.path.join(out, it["file"]) for _, it in pending], [f"{n} {it['tag']}" for n, it in pending], sheet)
+        raise Stop(f"{len(pending)} 张图待目检：" + "、".join(f"{n} {it['tag']}" for n, it in pending),
+                   f"逐张打开原图（拼图在 logs/待目检_资产.jpg），对照资产文档里该图的「出图后检查」和描述锁看；合格跑 "
+                   f"`pipeline.py review <项目> 图:<文件名> pass`；小出入按 docs/14 第四节第 4 步改描述锁跟图后再 pass；"
+                   f"不合格跑 `review ... fix <原因>`，改提示词后 `pipeline.py redo <项目> <序号>`")
+    if fixes:
+        raise Stop("有图判了 fix：" + "；".join(f"{n} {it['tag']}（{note}）" for n, it, note in fixes),
+                   "改 build_assets.py 里这张图的提示词，然后 `pipeline.py redo <项目> <序号>`，再 run（会占出图预算）")
+    mark(d, "asset_review")
+
+
+def st_specs(proj, d):
+    build(proj, "specs")
+    if not clips(proj):
+        raise Stop("没有导出任何规格单", "检查 分镜.json 的 clips（或 gen_clips.py 的 CLIPS）")
+    mark(d, "specs", clips=clips(proj))
+
+
+def st_check_spec(proj, d):
+    r = run([PY, "-I", os.path.join(TOOLS, "compile", "check_spec.py"), os.path.join(proj, "交付", "规格单")], check=False)
+    open(os.path.join(proj, "logs", "规格自检.txt"), "w", encoding="utf-8").write(r.stdout)
+    if "FAIL" in r.stdout:
+        raise Stop("规格自检有 FAIL：\n" + "\n".join(l for l in r.stdout.splitlines() if "FAIL" in l)[:2000],
+                   "按提示改 gen_clips.py（时长、画面里、台词速度、说话人入画），再 run")
+    mark(d, "check_spec")
+
+
+def _clip_files(proj, c):
+    spec = json.load(open(os.path.join(proj, "交付", "规格单", c + ".json"), encoding="utf-8"))
+    prev_spec = os.path.normpath(os.path.join(proj, "交付", spec["previs_spec"]))  # 路径相对 交付/（与 compile_video 一致）
+    mp4 = os.path.join(proj, "交付", spec["previs"])
+    return spec, prev_spec, mp4
+
+
+def st_previs(proj, d):
+    hashes = d["pipeline"].get("previs", {}).get("hashes", {})
+    done = []
+    for c in clips(proj):
+        spec, prev_spec, mp4 = _clip_files(proj, c)
+        h = sha(prev_spec)
+        if os.path.exists(mp4) and hashes.get(c) == h:
+            continue
+        run([PY, os.path.join(TOOLS, "previs", "render_previs.py"), prev_spec, "--out", os.path.dirname(mp4)])
+        hashes[c] = h
+        done.append(c)
+    mark(d, "previs", hashes=hashes, rendered=done)
+
+
+def st_geometry(proj, d):
+    hashes = d["pipeline"].get("geometry", {}).get("hashes", {})
+    bad = []
+    for c in clips(proj):
+        spec, prev_spec, mp4 = _clip_files(proj, c)
+        sp = os.path.join(proj, "交付", "规格单", c + ".json")
+        h = sha(prev_spec, sp)
+        if hashes.get(c) == h:
+            continue
+        rep = os.path.join(proj, "logs", f"几何检查_{c}.md")
+        r = run([PY, os.path.join(TOOLS, "previs", "geometry_check.py"), prev_spec, sp, "--out", rep], check=False)
+        txt = open(rep, encoding="utf-8").read() if os.path.exists(rep) else ""
+        if r.returncode != 0 or "| FAIL |" in txt or "| WARN |" in txt:  # WARN（遮挡、太小、头后竖直物、越轴）也拦：零抽卡
+            bad.append(c)
+        else:
+            hashes[c] = h
+    d["pipeline"]["geometry"] = {"hashes": hashes, "done": now()}
+    if bad:
+        raise Stop("白模几何检查有 FAIL / WARN：" + "、".join(bad),
+                   "看 logs/几何检查_第N条.md：改 分镜.json 里的站位（cast）、景别（size）、机位（view / cam）或场景 stage 的 marks / views（脚本模式改 gen_clips.py）；确属有意（如前景遮挡）就在该镜写 allow_occlude / allow_small，再 run")
+
+
+def contact_sheet(paths, labels, out, cols=4, w=640, h=360):
+    from PIL import Image, ImageDraw, ImageFont
+    rows = (len(paths) + cols - 1) // cols
+    sheet = Image.new("RGB", (w * min(cols, len(paths)), h * rows))
+    dr = ImageDraw.Draw(sheet)
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/STHeiti Medium.ttc", 24)
+    except OSError:
+        font = ImageFont.load_default()
+    for i, (p, lab) in enumerate(zip(paths, labels)):
+        im = Image.open(p).convert("RGB")
+        im.thumbnail((w, h))
+        x, y = (i % cols) * w, (i // cols) * h
+        sheet.paste(im, (x + (w - im.width) // 2, y + (h - im.height) // 2))
+        dr.rectangle([x, y, x + w, y + 32], fill=(0, 0, 0))
+        dr.text((x + 6, y + 3), lab, fill=(255, 220, 0), font=font)
+    sheet.save(out, quality=85)
+
+
+def st_framesheets(proj, d):
+    hashes = d["pipeline"].get("framesheets", {}).get("hashes", {})
+    for c in clips(proj):
+        spec, prev_spec, mp4 = _clip_files(proj, c)
+        h = sha(mp4)
+        out = os.path.join(proj, "logs", f"白模拼图_{c}.jpg")
+        k = "白模:" + c
+        if hashes.get(c) == h and os.path.exists(out):
+            continue
+        run(["ffmpeg", "-v", "error", "-y", "-ss", "0.25", "-i", mp4, "-vf", "fps=2,scale=320:-1,tile=10x6", "-frames:v", "1", out])
+        hashes[c] = h
+        if d["reviews"].get(k, {}).get("hash") != h:
+            d["reviews"][k] = {"status": "pass" if offline(d) else "待目检", "hash": h}
+    mark(d, "framesheets", hashes=hashes)
+
+
+def st_previs_review(proj, d):
+    pending = [c for c in clips(proj) if d["reviews"].get("白模:" + c, {}).get("status") != "pass"]
+    if pending:
+        raise Stop("白模待目检：" + "、".join(pending),
+                   "逐条打开 logs/白模拼图_第N条.jpg（每 0.5 秒一帧），对照规格单每镜的「画面里」：主体都在画里、前景过肩人物入画、"
+                   "没人挡住说话人、手部和物件特写拍对了东西；合格跑 `pipeline.py review <项目> 白模:第N条 pass`，"
+                   "不合格改 gen_clips.py 再 run（会重渲那一条）")
+    mark(d, "previs_review")
+
+
+def st_compile(proj, d):
+    fails, waits = [], []
+    for m in d["video_models"]:
+        r = run([PY, "-I", os.path.join(TOOLS, "compile", "compile_video.py"), os.path.join(proj, "交付", "规格单"), "--model", m], check=False)
+        fails += [l for l in r.stdout.splitlines() if l.startswith("FAIL")]
+    for root, _, files in os.walk(os.path.join(proj, "交付", "投喂包")):
+        if "检查.txt" in files:
+            waits += [os.path.relpath(root, proj) + "：" + l for l in open(os.path.join(root, "检查.txt"), encoding="utf-8") if l.startswith("WAIT")]
+    d["pipeline"]["compile"] = {"models": d["video_models"], "fails": fails, "waits": [w.strip() for w in waits], "done": now()}
+    if waits:
+        raise Stop("投喂包还缺定稿图：\n" + "\n".join(waits)[:1500], "回到出图：确认资产都过了目检（status 看 asset_review）")
+    if fails:
+        known = d.get("known_fails", [])
+        new = [f for f in fails if not any(k in f for k in known)]
+        if new:
+            raise Stop("编译有 FAIL：\n" + "\n".join(new), "按 FAIL 说明拆条或换模型；确实不提交的段落写进 production.json 的 known_fails 并告诉用户")
+
+
+def st_report(proj, d):
+    lines = [f"# 流水线报告（{now()}）", "", "| 阶段 | 状态 |", "|---|---|"]
+    for s in STAGES[:-1]:
+        lines.append(f"| {s} | {'完成 ' + d['pipeline'][s]['done'] if s in d['pipeline'] else '未完成'} |")
+    b = d["budget"]["images"]
+    lines += ["", f"出图预算：批准 {b['approved']} 张，已用 {b['used']} 张。", "",
+              f"投喂包：{', '.join(d['video_models'])}，在 `交付/投喂包/`。已知不提交的段落：{d.get('known_fails') or '无'}。", "",
+              "下一步：用户按投喂包出片（或接入出视频接口后由流水线提交），出完把视频交回审片（docs/04 24 分制 + docs/14 4.1 实拍教训）。"]
+    open(os.path.join(proj, "logs", "流水线报告.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    mark(d, "report")
+
+
+FUNCS = {s: globals()["st_" + s] for s in STAGES}
+
+
+# ---------------- 命令 ----------------
+
+def cmd_run(proj, until=None):
+    d = load(proj)
+    os.makedirs(os.path.join(proj, "logs"), exist_ok=True)
+    for s in STAGES:
+        try:
+            print(f"▶ {s}", flush=True)
+            FUNCS[s](proj, d)
+            save(proj, d)
+        except Stop as e:
+            d["pipeline"].pop(s, None)
+            for later in STAGES[STAGES.index(s) + 1:]:
+                d["pipeline"].pop(later, None)
+            d["blocked"] = {"stage": s, "why": str(e), "next": e.next_step, "at": now()}
+            save(proj, d)
+            print(f"■ 停在 {s}：{e}\nNEXT：{e.next_step}")
+            return 2
+        if until and s == until:
+            d.pop("blocked", None)
+            save(proj, d)
+            print(f"NEXT：已跑到 {until}，继续请再 run。")
+            return 0
+    d.pop("blocked", None)
+    save(proj, d)
+    print("NEXT：全部完成。把 logs/流水线报告.md 的要点和投喂包位置告诉用户；出视频要用户确认花费。")
+    return 0
+
+
+def _golden_files(proj):
+    out = ["交付/01-资产提示词.md"]
+    out += [os.path.join("交付", "规格单", f) for f in sorted(os.listdir(os.path.join(proj, "交付", "规格单")))]
+    for root, _, files in sorted(os.walk(os.path.join(proj, "交付", "投喂包"))):
+        out += [os.path.relpath(os.path.join(root, f), proj) for f in sorted(files) if f in ("提示词.txt", "界面参数.txt")]
+    return out
+
+
+def cmd_selftest(example, update=False):
+    """把样例拷到临时目录，离线跑完整条流水线，再和 <样例>/标准产物/ 逐字比对。"""
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="aigc_selftest_")
+    proj = os.path.join(tmp, os.path.basename(example))
+    shutil.copytree(example, proj, ignore=shutil.ignore_patterns("标准产物", "production.json", "交付", "logs", "预演规格"))
+    d = load(proj)
+    d.update(selftest=True, project=os.path.basename(example), video_models=["seedance", "kling", "hailuo", "wan"])
+    d["confirm"] = {"story": "selftest", "script": "selftest"}
+    save(proj, d)
+    print(f"自测目录：{proj}")
+    rc = cmd_run(proj)
+    if rc != 0:
+        print("✗ 自测没跑通：流水线在上面那一步停下了。先检查环境（Python 3.9+、Pillow、Blender 4.x、ffmpeg），再看报错。")
+        return 1
+    gold = os.path.join(example, "标准产物")
+    files = _golden_files(proj)
+    if update:
+        shutil.rmtree(gold, ignore_errors=True)
+        for f in files:
+            os.makedirs(os.path.dirname(os.path.join(gold, f)), exist_ok=True)
+            shutil.copy2(os.path.join(proj, f), os.path.join(gold, f))
+        print(f"已更新标准产物：{len(files)} 个文件")
+        return 0
+    bad = []
+    want = []
+    for root, _, fs in os.walk(gold):
+        want += [os.path.relpath(os.path.join(root, f), gold) for f in fs]
+    for f in sorted(set(want) | set(files)):
+        a, b = os.path.join(proj, f), os.path.join(gold, f)
+        if not (os.path.exists(a) and os.path.exists(b)) or open(a, "rb").read() != open(b, "rb").read():
+            bad.append(f)
+    if bad:
+        print(f"✗ 自测不一致：{len(bad)} 个文件和标准产物不同\n  " + "\n  ".join(bad[:20]) +
+              f"\n用 diff 对比：{proj}/<文件> 和 {gold}/<文件>。框架代码改了且确认新产物正确时，才用 `selftest <样例> --update` 更新标准。")
+        return 1
+    print(f"✓ 自测通过：{len(files)} 个产物和标准逐字一致（资产文档、规格单、四个模型的提示词与界面参数）。这台机器、这个智能体可以正式生产。")
+    return 0
+
+
+def cmd_status(proj):
+    d = load(proj)
+    for s in STAGES:
+        print(f"  {'✓' if s in d['pipeline'] else '·'} {s}")
+    pend = [k for k, v in d["reviews"].items() if v.get("status") == "待目检"]
+    if pend:
+        print("待目检：" + "、".join(pend))
+    b = d["budget"]["images"]
+    print(f"确认：故事 {'✓' if d['confirm']['story'] else '✗'}  剧本 {'✓' if d['confirm']['script'] else '✗'}；出图预算 {b['used']}/{b['approved']}")
+    if d.get("blocked"):
+        print(f"停在：{d['blocked']['stage']}\n原因：{d['blocked']['why']}\nNEXT：{d['blocked']['next']}")
+    elif all(s in d["pipeline"] for s in STAGES):
+        print("NEXT：全部完成。")
+    else:
+        print(f"NEXT：跑 `python3 tools/pipeline.py run {os.path.relpath(proj, ROOT)}`")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "selftest", "qc"])
+    ap.add_argument("project")
+    ap.add_argument("args", nargs="*")
+    ap.add_argument("--until", choices=STAGES)
+    ap.add_argument("--update", action="store_true", help="selftest：确认新产物正确后更新标准产物")
+    a = ap.parse_args()
+    proj = os.path.abspath(a.project)
+    if a.cmd == "init":
+        title, short = a.args
+        os.makedirs(os.path.join(proj, "预演规格"), exist_ok=True)
+        for f in ("build_assets.py", "gen_clips.py"):
+            dst = os.path.join(proj, "预演规格", f)
+            if not os.path.exists(dst):
+                s = open(os.path.join(ROOT, "templates", "project", f), encoding="utf-8").read()
+                open(dst, "w", encoding="utf-8").write(s.replace("{{片名}}", title).replace("{{短名}}", short))
+        d = load(proj)
+        d["project"] = title
+        save(proj, d)
+        print(f"已建好 {proj}（两个脚本 + production.json）。NEXT：用户确认故事和剧本后，把剧本写进两个脚本，再 run")
+        return 0
+    if not os.path.isdir(proj):
+        sys.exit(f"没有这个项目目录：{proj}")
+    if a.cmd == "selftest":
+        return cmd_selftest(proj, a.update)
+    if a.cmd == "qc":
+        import qc_video
+        return qc_video.main(proj, a.args[0], a.args[1])
+    if a.cmd == "status":
+        return cmd_status(proj)
+    if a.cmd == "run":
+        return cmd_run(proj, a.until)
+    d = load(proj)
+    if a.cmd == "confirm":
+        d["confirm"][a.args[0]] = now()
+    elif a.cmd == "approve":
+        kind, n = a.args
+        d["budget"][kind]["approved"] = d["budget"][kind]["used"] + int(n)
+    elif a.cmd == "review":
+        key, verdict = a.args[0], a.args[1]
+        if key not in d["reviews"]:
+            sys.exit(f"没有这个待目检条目：{key}；用 status 看")
+        d["reviews"][key].update(status=verdict, note=" ".join(a.args[2:]), at=now())
+    elif a.cmd == "redo":
+        n = int(a.args[0])
+        it = asset_table(proj)[n]
+        src = os.path.join(proj, "交付", "资产图", it["file"])
+        if os.path.exists(src):
+            dst = os.path.join(proj, "交付", "资产图", "废片")
+            os.makedirs(dst, exist_ok=True)
+            stamp = datetime.datetime.now().strftime("%m%d%H%M")
+            for ext in (".png", ".json"):
+                p = os.path.splitext(src)[0] + ext
+                if os.path.exists(p):
+                    shutil.move(p, os.path.join(dst, os.path.basename(os.path.splitext(src)[0]) + f"_{stamp}{ext}"))
+        d["reviews"].pop(_img_key(it), None)
+    save(proj, d)
+    print("已记录。")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

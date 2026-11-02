@@ -159,6 +159,13 @@ for sh in spec["shots"]:
                 if min(xs) - 0.01 <= v.x <= max(xs) + 0.01 and v.z < ov.z < v.z * 6:
                     notes.append(f"{t:.1f}s「{p}」头后是竖直物体「{o.name}」，会融在一起")
                     level = "FAIL" if level == "FAIL" else "WARN"
+        for p in fg:  # 过肩的前景人物至少要有肩膀在画里，否则过肩就成了单人镜头（《天劫外包》第 6 条、样例第 1 条教训）
+            hd = bpy.data.objects[p + "_head"].matrix_world.translation
+            sh_pt = hd - Vector((0, 0, 0.3))
+            vs = [world_to_camera_view(sc, cam, x) for x in (hd, sh_pt)]
+            if not any(-0.05 <= w.x <= 1.05 and -0.1 <= w.y <= 1.05 and w.z > 0 for w in vs):
+                notes.append(f"{t:.1f}s 前景「{p}」不在画里，过肩没过上")
+                level = "FAIL"
         ax = spec.get("axis")
         both = ax and all(n in main + fg for n in (ax.get("a"), ax.get("b")))
         if both and ax.get("a") in people and ax.get("b") in people and frac == 0.5:

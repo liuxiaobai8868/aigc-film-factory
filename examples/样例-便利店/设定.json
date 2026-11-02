@@ -1,0 +1,290 @@
+{
+ "title": "三点",
+ "short": "三点",
+ "film": "near-live-action cinematic short film",
+ "worlds": {
+  "便利店": {
+   "recipe": "R05"
+  }
+ },
+ "people_recipe": "R04",
+ "three": "世界锁：只有一个世界，深夜下雨的小便利店，安静、冷暖对冲；屋里暖黄台灯和冷白灯管，门外是雨夜的街。",
+ "music": "配乐：没有配乐，只有冰柜的嗡嗡声、门外的雨声和推门的风铃声。",
+ "characters": [
+  {
+   "name": "阿青",
+   "height": 1.62,
+   "mark_zh": "深蓝工装、左手旧电子表",
+   "lock": "阿青：二十出头的成年女人，瘦，齐肩黑发别在耳后；穿洗旧的深蓝色工装外套和黑色长裤，白色帆布鞋；左手腕戴一块旧电子表。",
+   "brief_en": "a tired young night-shift convenience-store clerk, clearly an adult in her early twenties.",
+   "must_en": "worn dark-blue work jacket, black trousers, white canvas shoes, an old digital watch on the left wrist, shoulder-length black hair tucked behind the ears.",
+   "portrait_en": "calm, tired eyes, mouth closed.",
+   "check": [
+    "二十出头的成年人",
+    "深蓝工装、白帆布鞋",
+    "电子表在左手"
+   ],
+   "voice": "声音轻，有点哑，语速慢。"
+  },
+  {
+   "name": "老周",
+   "height": 1.74,
+   "mark_zh": "灰夹克、肩膀淋湿",
+   "lock": "老周：上了年纪的男人，眼角皱纹很深，微胖，短寸头花白；穿一件旧灰色夹克，肩膀被雨淋湿，深色裤子，黑皮鞋。",
+   "brief_en": "a heavy-set older man with deep crow's feet, a regular late-night customer.",
+   "must_en": "old grey jacket with rain-wet shoulders, dark trousers, black leather shoes, short greying buzz cut.",
+   "portrait_en": "tired, kind eyes, mouth closed.",
+   "check": [
+    "灰夹克肩膀是湿的",
+    "花白寸头"
+   ],
+   "voice": "声音低，沙哑，话少。"
+  }
+ ],
+ "props": [
+  {
+   "name": "香烟",
+   "lock": "香烟：一包没有任何字和标志的素白色烟盒，有点皱。",
+   "en": "one plain white cigarette pack with no text or logo, slightly crumpled.",
+   "must_en": "Exactly one pack. Plain white, no printing at all.",
+   "check": [
+    "烟盒上没有字"
+   ]
+  }
+ ],
+ "locations": [
+  {
+   "name": "便利店",
+   "world": "便利店",
+   "lock": "便利店：深夜的小便利店；收银台在玻璃门的左手边，台上一盏暖黄色小台灯；三排货架在冷白灯管下；玻璃门外是下雨的街和窄屋檐。",
+   "en": "a small convenience store late at night.",
+   "must_en": "The cashier counter stands to the left of the glass door with one small warm desk lamp; three aisles under cold white tubes; rain on the street outside the glass door under a narrow awning.",
+   "check": [
+    "收银台在门的左边",
+    "暖黄台灯 + 冷白灯管",
+    "门外下雨"
+   ],
+   "grid": false,
+   "stage": {
+    "size": [
+     12,
+     12
+    ],
+    "boxes": [
+     {
+      "name": "Counter",
+      "min": [
+       -3.2,
+       0.8,
+       0
+      ],
+      "max": [
+       -1.4,
+       1.6,
+       1.0
+      ],
+      "color": "wood"
+     },
+     {
+      "name": "Lamp",
+      "min": [
+       -2.7,
+       1.0,
+       1.0
+      ],
+      "max": [
+       -2.5,
+       1.2,
+       1.4
+      ],
+      "color": "gold"
+     },
+     {
+      "name": "Shelf1",
+      "min": [
+       0.5,
+       -1.5,
+       0
+      ],
+      "max": [
+       3.5,
+       -1.1,
+       1.8
+      ],
+      "color": "white"
+     },
+     {
+      "name": "Shelf2",
+      "min": [
+       0.5,
+       0.3,
+       0
+      ],
+      "max": [
+       3.5,
+       0.7,
+       1.8
+      ],
+      "color": "white"
+     },
+     {
+      "name": "Shelf3",
+      "min": [
+       0.5,
+       2.1,
+       0
+      ],
+      "max": [
+       3.5,
+       2.5,
+       1.8
+      ],
+      "color": "white"
+     },
+     {
+      "name": "Door",
+      "min": [
+       -1.0,
+       -5.05,
+       0
+      ],
+      "max": [
+       1.0,
+       -4.95,
+       2.2
+      ],
+      "color": "glass"
+     }
+    ],
+    "marks": {
+     "收银台后": [
+      -2.3,
+      2.2,
+      0
+     ],
+     "柜台前": [
+      -2.3,
+      0.0,
+      0
+     ],
+     "门口": [
+      0,
+      -4.3,
+      0
+     ],
+     "门外": [
+      0,
+      -6.5,
+      0
+     ],
+     "台面": [
+      -2.3,
+      1.2,
+      1.0
+     ],
+     "屋檐下": [
+      1.5,
+      -6.0,
+      0
+     ]
+    },
+    "establish": {
+     "pos": [
+      -0.4,
+      -4.2,
+      1.8
+     ],
+     "look": [
+      -2.3,
+      2.0,
+      1.1
+     ],
+     "lens": 24
+    },
+    "views": {
+     "朝门口": {
+      "pos": [
+       -0.6,
+       2.9,
+       1.8
+      ],
+      "look": [
+       0,
+       -5.5,
+       1.2
+      ],
+      "lens": 24
+     }
+    }
+   }
+  }
+ ],
+ "crowds": [
+  {
+   "world": "便利店",
+   "refs": [
+    "阿青",
+    "老周"
+   ],
+   "world_en": "ordinary people out late on a rainy night in a small city",
+   "roster": [
+    [
+     "加班的上班族",
+     "a tired office worker in his thirties in a rumpled white shirt holding a folded umbrella, about 176 cm tall"
+    ],
+    [
+     "骑手",
+     "a delivery rider in a yellow raincoat holding a helmet, about 172 cm tall"
+    ],
+    [
+     "夜班护士",
+     "a woman in her forties in a navy coat over scrubs holding a thermos, about 160 cm tall"
+    ],
+    [
+     "醉酒的年轻人",
+     "a lanky young man in his twenties in a hoodie leaning slightly, about 183 cm tall"
+    ],
+    [
+     "环卫工",
+     "a short old man in an orange vest holding a broom, about 155 cm tall"
+    ],
+    [
+     "保安",
+     "a broad security guard in a dark uniform holding a flashlight, about 180 cm tall"
+    ],
+    [
+     "收摊的小贩",
+     "a stout woman in her fifties in an apron holding a folded stool, about 152 cm tall"
+    ],
+    [
+     "出租车司机",
+     "a heavy-set taxi driver in a polo shirt holding car keys, about 170 cm tall"
+    ],
+    [
+     "学生",
+     "a slim young woman in her early twenties with a backpack and earphones, about 165 cm tall"
+    ],
+    [
+     "夜跑的人",
+     "a fit man in his forties in running clothes, about 178 cm tall"
+    ],
+    [
+     "遛狗的老太太",
+     "a small old woman in a padded jacket holding a dog leash, about 148 cm tall"
+    ],
+    [
+     "厨师",
+     "a big cook in a white jacket smoking-break pose without a cigarette, about 185 cm tall"
+    ],
+    [
+     "情侣中的女孩",
+     "a young woman in a raincoat holding a transparent umbrella, about 163 cm tall"
+    ],
+    [
+     "修车师傅",
+     "a wiry mechanic with grease on his overalls holding a wrench, about 168 cm tall"
+    ]
+   ]
+  }
+ ]
+}

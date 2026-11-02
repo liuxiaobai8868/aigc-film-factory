@@ -28,6 +28,8 @@
 | `docs/14-多模型出片流程与零抽卡闸门.md` | **工厂 2.0**：镜头规格单、轴线与过肩、零抽卡闸门五步、投喂包、API 提交；工具 `tools/compile/`、`tools/previs/geometry_check.py`、`tools/video_submit.py` |
 | `docs/16-风格库.md` | **用户口味的画风库**：493 张样图（角色/场景/巨物）提炼成 18 个风格配方，已翻成 Image 2.5 / Banana / Seedance 的语言；立项选画风、写任何出图提示词前必读；查询 `tools/mj_style.py`，配方 `config/style_recipes.json` |
 | `docs/17-群像方法.md` | 群众演员 / 配角群像：按世界一张 14 人群像，职业、服装、体型做差异，主角图作风格参考；选定风格后与主角三视图一起出 |
+| `docs/18-自动化流水线.md` | **剧本确认后默认走流水线**：`python3 tools/pipeline.py status|run projects/<项目>`，只照 NEXT 做；用户只确认故事、剧本和花费 |
+| `docs/19-分镜数据格式.md` | 剧本拆成 设定.json + 分镜.json 的格式与拆法；`tools/storyboard.py check` 校验；样例 `examples/样例-便利店/`；`pipeline.py selftest` 自测 |
 | `tools/` | `prompt_lint.py` 机检；`image_gen.py` 多接口出图（配置 `config/image_providers.json`，密钥 `.env`）；`previs/` 白模预演（规格 JSON → 视频） |
 
 ## 岗位（按流水线顺序；agent 名 → 目录）
