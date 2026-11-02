@@ -26,6 +26,7 @@
 | `docs/12-框架审核评估.md` | 框架成熟度、已知风险、升 1.0 的条件 |
 | `docs/13-视频模型手册.md` | **工厂 2.0**：Seedance 2.5 / 可灵 4.0 / 海螺 03 / 万相 3.0 的硬参数、写法、选型表、按模型拆条（2026-11 对照官方核实） |
 | `docs/14-多模型出片流程与零抽卡闸门.md` | **工厂 2.0**：镜头规格单、轴线与过肩、零抽卡闸门五步、投喂包、API 提交；工具 `tools/compile/`、`tools/previs/geometry_check.py`、`tools/video_submit.py` |
+| `docs/16-风格库.md` | **用户口味的画风库**：493 张样图（角色/场景/巨物）提炼成 18 个风格配方，已翻成 Image 2.5 / Banana / Seedance 的语言；立项选画风、写任何出图提示词前必读；查询 `tools/mj_style.py`，配方 `config/style_recipes.json` |
 | `tools/` | `prompt_lint.py` 机检；`image_gen.py` 多接口出图（配置 `config/image_providers.json`，密钥 `.env`）；`previs/` 白模预演（规格 JSON → 视频） |
 
 ## 岗位（按流水线顺序；agent 名 → 目录）

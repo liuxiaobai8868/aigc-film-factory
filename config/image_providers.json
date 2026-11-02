@@ -7,6 +7,15 @@
       "擅长": "人物三视图、表情、道具多态并排：复杂版式、左右方位、模糊脸椭圆、精确计数",
       "providers": [
         {
+          "provider": "apimart",
+          "model_env": "APIMART_IMAGE_MODEL",
+          "model": "gpt-image-2.5-sunburst",
+          "aspect": "16:9",
+          "resolution": "2k",
+          "quality": "high",
+          "实测": "2026-11-02 实测：2K 原生 2048×1152，每张约 0.035；4K 原生 3840×2160，约 0.082。用户选定全用 2K，排第一"
+        },
+        {
           "provider": "duomi",
           "model_env": "DUOMI_MODEL",
           "model": "gpt-image-2.5-sunburst",
@@ -115,6 +124,13 @@
       "base_url_env": "ARK_BASE_URL",
       "base_url": "https://ark.cn-beijing.volces.com/api/v3",
       "参考图": "本地文件，base64 data URI"
+    },
+    "apimart": {
+      "名称": "APIMart 聚合平台",
+      "key_env": "APIMART_API_KEY",
+      "base_url": "https://api.apimart.ai/v1",
+      "base_url_env": "APIMART_BASE_URL",
+      "参考图": "本地图自动上传 /v1/uploads/images 换 URL（72 小时有效），图生图不传 size"
     }
   },
   "按资产类型推荐": {

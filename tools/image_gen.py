@@ -3,7 +3,7 @@
 
 用法：
   python3 -I tools/image_gen.py <资产提示词.md> --out <输出目录> [--engine auto|image25|banana|seedream|mj]
-                                [--provider duomi|openai|compat|google|ark] [--only 1,3] [--force] [--dry-run]
+                                [--provider duomi|apimart|openai|compat|google|ark] [--only 1,3] [--force] [--dry-run]
   python3 -I tools/image_gen.py --providers        # 看哪些接口已配好密钥
 
 引擎（写法见 docs/10）：image25 = GPT Image（```text 代码块），banana = Nano Banana（```banana），
@@ -11,7 +11,7 @@ seedream = 火山 Seedream（```seedream，没有就用 ```banana），mj = Midj
 --engine auto（默认）：读出图清单的"推荐模型"列；没有这一列就按"类型"查 config/image_providers.json 的推荐表；
 推荐的引擎没有配好接口或文档里没有对应代码块时，顺延到推荐表里的下一个。
 
-密钥只从环境变量或 .env 读（见 .env.example）：DUOMI_API_KEY、OPENAI_API_KEY、COMPAT_API_KEY + COMPAT_BASE_URL、
+密钥只从环境变量或 .env 读（见 .env.example）：DUOMI_API_KEY、APIMART_API_KEY、OPENAI_API_KEY、COMPAT_API_KEY + COMPAT_BASE_URL、
 GEMINI_API_KEY、ARK_API_KEY。已存在的输出默认跳过（--force 重出）；每张图旁写一个 .json 记录提示词、参考图、接口和任务 id。
 付费接口：每张图都会计费，先用 --dry-run 看清会出哪些图、走哪个接口。
 """
@@ -310,7 +310,35 @@ def call_ark(engine, pc, key, prompt, refs, log):
     raise RuntimeError(f"没有返回图片：{json.dumps(res, ensure_ascii=False)[:400]}")
 
 
-CALLS = {"duomi": call_duomi, "openai": call_openai, "google": call_google, "ark": call_ark,
+def call_apimart(engine, pc, key, prompt, refs, log):
+    if engine != "image25":
+        raise RuntimeError(f"APIMart 接口暂只接了 Image 2.5，不支持 {engine}")
+    b = base_url("apimart")
+    h = {"Authorization": f"Bearer {key}"}
+    body = {"model": pc["model"], "prompt": prompt, "size": pc.get("aspect", "16:9"), "resolution": os.environ.get("APIMART_RESOLUTION") or pc.get("resolution", "2k"),
+            "quality": pc.get("quality", "high"), "n": 1}
+    if refs:  # 本地图先上传换 72 小时有效的 URL；图生图不传 size，尺寸随第一张参考图
+        body["image_urls"] = [http_multipart(f"{b}/uploads/images", h, {}, [("file", r)])["url"] for r in refs]
+        log["ref_urls"] = body["image_urls"]
+        del body["size"]
+    res = http_json(f"{b}/images/generations", h, body)
+    tid = ((res.get("data") or [{}])[0] or {}).get("task_id")
+    if not tid:
+        raise RuntimeError(f"提交无任务 id：{json.dumps(res, ensure_ascii=False)[:400]}")
+    log["task_id"] = tid
+
+    def check():
+        d = http_json(f"{b}/tasks/{tid}?language=zh", h).get("data") or {}
+        if d.get("status") == "completed":
+            log["cost"] = d.get("cost")
+            u = d["result"]["images"][0]["url"]
+            return u[0] if isinstance(u, list) else u
+        if d.get("status") in ("failed", "cancelled"):
+            raise RuntimeError(f"任务失败：{json.dumps(d.get('error'), ensure_ascii=False)[:400]}")
+    return {"url": poll(check, every=5)}
+
+
+CALLS = {"duomi": call_duomi, "apimart": call_apimart, "openai": call_openai, "google": call_google, "ark": call_ark,
          "compat": lambda *a: call_openai(*a, provider="compat")}
 
 

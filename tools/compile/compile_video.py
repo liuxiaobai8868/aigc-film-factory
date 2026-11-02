@@ -138,7 +138,7 @@ def build_prompt(spec, model, style, part):
             out.append(short_duty(a, ref))
     vref = ref_name(model, "video", 1)
     out.append(previs_duty(model, spec, vref))
-    out.append("角色外貌、服饰、位置、台词互不交换；全片是院线级 3D 动画质感，从第一帧开始，非真人实拍。")
+    out.append("角色外貌、服饰、位置、台词互不交换；画面质感从第一帧开始就按下面的质感描述。")
     out += ["", convert_refs(spec["count"], model, len(imgs))]
     out += ["", "【场景上下文】" if model == "seedance" else "【总体设定】", spec["context"], spec["two_worlds"], spec["style"]]
     axis = [g for g in spec["geo"] if g.startswith("调度轴线")]
@@ -235,10 +235,15 @@ def compile_one(spec, model, style, out_root):
         for i, a in enumerate(assets, 1):
             src = os.path.join(base, a["file"])
             dst = os.path.join(d, f"{i:02d}_{os.path.basename(a['file'])}")
-            shutil.copy2(src, dst)
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+            else:  # 图还没出：先占位，出完图重编一次即可
+                open(dst + ".缺图.txt", "w", encoding="utf-8").write(f"等待定稿图：{a['file']}\n")
             files.append(dst)
         video = os.path.join(d, "视频1_白模.mp4")
-        if len(parts) == 1:
+        if not os.path.exists(previs):
+            open(video + ".缺白模.txt", "w", encoding="utf-8").write(f"等待白模：{spec['previs']}\n")
+        elif len(parts) == 1:
             shutil.copy2(previs, video)
         else:
             cut_video(previs, video, t0, t1)
@@ -248,6 +253,9 @@ def compile_one(spec, model, style, out_root):
         json.dump(api_request(spec, model, prompt, files, video, t1 - t0), open(os.path.join(d, "api_request.json"), "w", encoding="utf-8"),
                   ensure_ascii=False, indent=1)
         chk = check_limits(spec, model, prompt, t1 - t0, len(spec["assets"]), style)
+        missing = [a["file"] for a in assets if not os.path.exists(os.path.join(base, a["file"]))]
+        if missing:
+            chk.append(f"WAIT  还缺 {len(missing)} 张定稿图：{'、'.join(os.path.basename(m) for m in missing)}；出完图重编一次")
         open(os.path.join(d, "检查.txt"), "w", encoding="utf-8").write("\n".join(chk) + "\n")
         made.append((d, len(prompt), chk))
     return made

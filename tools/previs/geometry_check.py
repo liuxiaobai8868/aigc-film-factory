@@ -87,22 +87,31 @@ def owner(obj):
 
 
 def subjects(body):
+    """从"画面里：……。"取主体。镜子里、画像里的人不算；只露手脚的特写不查头；虚化、背影、背对镜头的算前景。"""
     m = re.search(r"画面里：([^。]*)。", body)
     if not m:
-        return [], []
-    main, fg = [], []
-    for item in re.split(r"[、，和]", m.group(1)):
+        return [], [], []
+    main, fg, partial = [], [], []
+    for item in re.split(r"[、，]", m.group(1)):
+        if re.search(r"镜子里|画像里|铜镜里", item):
+            continue
         for p in people:
             if p in item:
-                (fg if re.search(r"虚化|背影|肩膀|后脑", item) else main).append(p)
-    return main, fg
+                if re.search(r"的手|的双手|的脚|光着的脚|的鼓面", item):
+                    partial.append(p)
+                elif re.search(r"虚化|背影|肩膀|后脑|背对", item):
+                    fg.append(p)
+                else:
+                    main.append(p)
+    return main, fg, partial
 
 
 rows, axis_sides = [], {}
 dg = bpy.context.evaluated_depsgraph_get()
 for sh in spec["shots"]:
     L = sh["t1"] - sh["t0"]
-    main, fg = subjects(sh["body"])
+    main, fg, partial = subjects(sh["body"])
+    ok_occ = set(sh.get("allow_occlude", []))
     notes = []
     level = "PASS"
     for frac in (0.25, 0.5, 0.75):
@@ -129,19 +138,20 @@ for sh in spec["shots"]:
             top = body.matrix_world @ Vector((0, 0, body.dimensions.z / 2))
             feet = body.matrix_world @ Vector((0, 0, -body.dimensions.z / 2))
             hgt = abs(world_to_camera_view(sc, cam, head).y - world_to_camera_view(sc, cam, feet).y)
-            if hgt < 0.06:
+            if hgt < 0.06 and p not in sh.get("allow_small", []):
                 notes.append(f"{t:.1f}s「{p}」只占画高 {hgt:.0%}，太小")
                 level = "FAIL" if level == "FAIL" else "WARN"
             d = head - cp
             hit, loc, _n, _i, obj, _m = sc.ray_cast(dg, cp, d.normalized(), distance=d.length)
-            if hit and owner(obj) != p and (loc - cp).length < d.length - 0.05:
+            if hit and owner(obj) != p and owner(obj) not in ok_occ and (loc - cp).length < d.length - 0.05:
                 who = owner(obj)
                 if who in fg:
                     notes.append(f"{t:.1f}s「{p}」被前景「{who}」挡住（规格写了前景虚化，属有意遮挡；确认嘴没被挡）")
                 else:
                     notes.append(f"{t:.1f}s「{p}」被「{who}」挡住")
                     level = "FAIL" if level == "FAIL" else "WARN"
-            for o in TALL:
+            for o in [x for x in boxes if x.name not in ok_occ and max(x.dimensions.x, x.dimensions.y) > 0.15
+                      and x.dimensions.z > 6 * max(x.dimensions.x, x.dimensions.y) and x.dimensions.z > 3]:
                 c = o.matrix_world.translation
                 ov = world_to_camera_view(sc, cam, c)
                 xs = [world_to_camera_view(sc, cam, o.matrix_world @ Vector(cc)).x for cc in o.bound_box]
@@ -150,7 +160,8 @@ for sh in spec["shots"]:
                     notes.append(f"{t:.1f}s「{p}」头后是竖直物体「{o.name}」，会融在一起")
                     level = "FAIL" if level == "FAIL" else "WARN"
         ax = spec.get("axis")
-        if ax and ax.get("a") in people and ax.get("b") in people and frac == 0.5:
+        both = ax and all(n in main + fg for n in (ax.get("a"), ax.get("b")))
+        if both and ax.get("a") in people and ax.get("b") in people and frac == 0.5:
             pa = bpy.data.objects[ax["a"]].matrix_world.translation
             pb = bpy.data.objects[ax["b"]].matrix_world.translation
             cross = (pb.x - pa.x) * (cp.y - pa.y) - (pb.y - pa.y) * (cp.x - pa.x)
