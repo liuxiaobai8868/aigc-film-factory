@@ -17,6 +17,7 @@ argv = sys.argv[sys.argv.index("--") + 1:]
 SPEC = json.load(open(argv[0], encoding="utf-8"))
 OUT = argv[1]
 STILLS = "--stills" in argv
+NO_RENDER = "--no-render" in argv  # 只搭场景不渲染（geometry_check.py 用）
 
 dur = float(SPEC["duration"])
 sc = reset(dur)
@@ -102,7 +103,9 @@ sc.camera = cams[0][1]
 
 linear_all()
 os.makedirs(OUT, exist_ok=True)
-if STILLS:
+if NO_RENDER:
+    pass
+elif STILLS:
     # 每个镜头取中点一帧
     for i, (t0, c) in enumerate(cams):
         t1 = cams[i + 1][0] if i + 1 < len(cams) else dur

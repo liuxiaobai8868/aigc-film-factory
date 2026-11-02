@@ -54,3 +54,7 @@ ffmpeg -framerate 24 -i /tmp/g2_frames/f_%04d.png -c:v libx264 -pix_fmt yuv420p 
 ```
 
 切点检查：`ffmpeg -i previs.mp4 -vf "select='gt(scene,0.08)',metadata=print" -f null -` 列出画面突变的时间点，应与切点清单一致。
+
+## 零抽卡闸门 · 几何检查
+
+`python3 tools/previs/geometry_check.py <白模规格.json> <镜头规格单.json> [--out 报告.md]`：在 Blender 里搭出白模（`build_from_spec.py --no-render`），逐镜检查主体入画、大小、遮挡、头后竖直物体、机位穿墙、越轴。镜头规格单的格式见 docs/14。
