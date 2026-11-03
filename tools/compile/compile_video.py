@@ -27,11 +27,14 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, HERE)
+import model_prompts as MP  # noqa: E402
 
 LIMITS = {  # docs/13 第一节，2026-11 官方
     "seedance": {"名称": "Seedance 2.5（即梦 / 火山方舟）", "dur": (4, 30), "images": 30, "videos": 10, "video_total": 30, "chars": 5000, "lean_target": 1500},
     "kling": {"名称": "可灵 4.0（全能参考）", "dur": (3, 30), "images": 10, "videos": 5, "video_total": 30, "chars": 8000, "lean_target": 2500},
-    "hailuo": {"名称": "海螺 03 / MiniMax H3（参考生视频）", "dur": (4, 15), "images": 9, "videos": 3, "video_total": 15, "chars": 7000, "lean_target": 1500},
+    "hailuo": {"名称": "海螺 03 / MiniMax H3（全能参考 Ref2VA）", "dur": (4, 15), "images": 9, "videos": 3, "video_total": 15, "chars": 7000, "lean_target": 4000,
+               "words": (350, 500)},
     "wan": {"名称": "万相 3.0（参考生视频）", "dur": (2, 15), "images": 10, "videos": 5, "video_total": 15, "chars": 20000, "lean_target": 1500},
 }
 SPLIT_MAX = {"seedance": 30, "kling": 30, "hailuo": 15, "wan": 15}
@@ -61,6 +64,22 @@ def split_by_cuts(spec, maxlen):
         cur.append(sh)
     if cur:
         parts.append((start, cur[-1]["t1"], cur))
+    return parts
+
+
+MIN_DUR = {"seedance": 4, "kling": 3, "hailuo": 4, "wan": 2}
+
+
+def split_for(spec, model):
+    """按模型拆条；尾段短于该模型下限时并进前一段（并后仍不超上限），并不了就把前一段的最后一镜让给尾段。"""
+    parts = split_by_cuts(spec, SPLIT_MAX[model])
+    lo, hi = MIN_DUR[model], SPLIT_MAX[model]
+    if len(parts) > 1 and parts[-1][1] - parts[-1][0] < lo:
+        (a0, a1, sa), (b0, b1, sb) = parts[-2], parts[-1]
+        if b1 - a0 <= hi:
+            parts[-2:] = [(a0, b1, sa + sb)]
+        elif len(sa) > 1 and b1 - sa[-1]["t0"] <= hi and sa[-1]["t0"] - a0 >= lo:
+            parts[-2:] = [(a0, sa[-1]["t0"], sa[:-1]), (sa[-1]["t0"], b1, [sa[-1]] + sb)]
     return parts
 
 
@@ -208,14 +227,19 @@ def ui_params(spec, model, dur, n_img):
         rows += ["模式：全能参考", f"分辨率：{spec['resolution']}", "声音：开", "不开自动改写",
                  f"上传：先按编号上传 {n_img} 张图（@图片1…），再上传 视频1_白模.mp4（@视频1）"]
     elif model == "kling":
-        rows += ["模式：全能参考（Omni Reference），不要用关键帧入口", "分辨率：1080p", "声音：开（可灵默认）",
-                 f"上传：按编号上传 {n_img} 张图（@Image1…），再上传 视频1_白模.mp4（@Video1）"]
+        rows += ["模式：全能参考（Omni Reference）。不要用关键帧入口：关键帧模式不收参考视频，白模用不上", "分辨率：1080p（试错：Kling 4.0 Flash 720p，≤ 20 秒）",
+                 "声音：开（可灵默认）", "多镜头：开（默认）；提示词里已写死 SHOT 清单和硬切",
+                 f"上传：按编号上传 {n_img} 张图（@Image1…），再上传 视频1_白模.mp4（@Video1）。参考视频单个 3–30 秒"]
     elif model == "hailuo":
-        rows += ["模式：参考生视频（不要同时传首尾帧）", "分辨率：2K（试错用 768P）",
-                 f"上传：按编号上传 {n_img} 张参考图，再上传 视频1_白模.mp4 作参考视频"]
+        rows += ["模式：全能参考 Ref2VA（参考生视频）。不要同时传首尾帧：首尾帧模式不收参考视频，白模用不上",
+                 "分辨率：官方网页 / API 选 2K（试错 768P）；本地部署只有 768P（2K 的 Regenerate 模型没开源）",
+                 "提示词：整段粘贴，英文分段格式是 H3 官方 skill 的格式，台词保留中文在 <d>[Chinese] …</d> 里，不要翻译、不要改标签",
+                 f"上传：按编号上传 {n_img} 张参考图（对应 <Subject 1…>），再上传 视频1_白模.mp4（<Video 1>）。参考视频 2–15 秒，素材合计 ≤ 12 个",
+                 "本地部署（ComfyUI / diffusers，MiniMax-H3 Ref2VA 权重）：同一份提示词和素材，输出 768P、24fps"]
     else:
-        rows += ["模式：参考生视频", "分辨率：720P（试错用 480P）", "智能扩写（prompt_extend）：关", "声音：开",
-                 f"上传：按编号上传 {n_img} 张图（图1…），再上传 视频1_白模.mp4（视频1）"]
+        rows += ["模式：参考生视频（多模态参考）。不要用首帧 / 首尾帧入口：那两个模式不收参考视频，白模用不上", "分辨率：720P（试错用 480P）",
+                 "智能扩写（prompt_extend）：关（开着会改写提示词，分镜和台词会被改）", "声音：开", "输出帧率 30fps（白模 24fps 不影响）",
+                 f"上传：按编号上传 {n_img} 张图（图1…），再上传 视频1_白模.mp4（视频1）。参考视频合计 ≤ 15 秒，输入 + 输出 ≤ 30 秒"]
     return "\n".join(rows) + "\n"
 
 
@@ -223,7 +247,7 @@ def compile_one(spec, model, style, out_root):
     lim = LIMITS[model]
     base = spec["_dir"]
     previs = os.path.join(base, spec["previs"])
-    parts = split_by_cuts(spec, SPLIT_MAX[model])
+    parts = split_for(spec, model)
     made = []
     for k, part in enumerate(parts, 1):
         t0, t1, shots = part
@@ -249,12 +273,18 @@ def compile_one(spec, model, style, out_root):
             shutil.copy2(previs, video)
         else:
             cut_video(previs, video, t0, t1)
-        prompt = build_prompt(spec, model, style, part)
+        notes = []
+        if model == "seedance":
+            prompt = build_prompt(spec, model, style, part)
+        else:
+            prompt, fallback = MP.BUILD[model](spec, part, short_duty)
+            if fallback:
+                notes.append(f"WARN  镜头 {fallback} 没有结构化数据（项目不是 设定.json + 分镜.json 写的），这几镜退回中文正文，不是{lim['名称']}官方格式；改用 docs/19 的数据格式可得到完整官方格式")
         open(os.path.join(d, "提示词.txt"), "w", encoding="utf-8").write(prompt + "\n")
         open(os.path.join(d, "界面参数.txt"), "w", encoding="utf-8").write(ui_params(spec, model, t1 - t0, len(files)))
         json.dump(api_request(spec, model, prompt, files, video, t1 - t0), open(os.path.join(d, "api_request.json"), "w", encoding="utf-8"),
                   ensure_ascii=False, indent=1)
-        chk = check_limits(spec, model, prompt, t1 - t0, len(spec["assets"]), style)
+        chk = check_limits(spec, model, prompt, t1 - t0, len(spec["assets"]), style) + notes
         missing = [a["file"] for a in assets if not os.path.exists(os.path.join(base, a["file"]))]
         if missing:
             chk.append(f"WAIT  还缺 {len(missing)} 张定稿图：{'、'.join(os.path.basename(m) for m in missing)}；出完图重编一次")
@@ -272,6 +302,10 @@ def check_limits(spec, model, prompt, dur, n_assets, style):
                + ("：超出的图没有放进投喂包，先在规格单里减图" if n_assets > lim["images"] else ""))
     n = len(prompt)
     out.append(("PASS" if n <= lim["chars"] else "FAIL") + f"  提示词 {n} 字（上限 {lim['chars']}）")
+    if lim.get("words"):
+        w = MP.english_words(prompt)
+        lo_w, hi_w = lim["words"]
+        out.append(("PASS" if w <= hi_w * 1.5 else "WARN") + f"  英文 {w} 词（H3 官方：生成任务通常 {lo_w}–{hi_w} 词，台词多时以台词为先）")
     if style == "lean" and n > lim["lean_target"]:
         out.append(f"WARN  精简版仍有 {n} 字，超过建议的 {lim['lean_target']} 字：信息越多越容易被模型忽略，考虑压镜头描述")
     return out

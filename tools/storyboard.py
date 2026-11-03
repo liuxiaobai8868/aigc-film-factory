@@ -57,9 +57,16 @@ def load(proj):
 
 # ---------------- 校验 ----------------
 
-def validate(bible, board):
-    """返回 (errors, warnings)，每条都带"怎么改"。"""
+def models_of(proj):
+    p = os.path.join(proj, "production.json")
+    return json.load(open(p, encoding="utf-8")).get("video_models", ["seedance"]) if os.path.exists(p) else ["seedance"]
+
+
+def validate(bible, board, models=("seedance",)):
+    """返回 (errors, warnings)，每条都带"怎么改"。models 里有 hailuo 时，额外要求英文字段（H3 官方提示词是英文分段格式）。"""
     E, W = [], []
+    need_en = "hailuo" in models
+    EN = "（要出海螺 H3：官方提示词是英文分段格式，英文由你在数据里写一次，编译器不临场翻译）"
     recipes = {r["id"] for r in json.load(open(os.path.join(ROOT, "config", "style_recipes.json"), encoding="utf-8"))["配方"]}
     for k in ("title", "short", "film", "worlds", "people_recipe", "three", "music", "characters", "locations"):
         if k not in bible:
@@ -71,14 +78,16 @@ def validate(bible, board):
             E.append(f"世界「{w}」的 recipe {v.get('recipe')} 不在 config/style_recipes.json（用 tools/mj_style.py --recipes 看）")
     if bible["people_recipe"] not in recipes:
         E.append(f"people_recipe {bible['people_recipe']} 不存在")
+    if need_en and not bible.get("music_en"):
+        E.append("设定.json 缺 music_en：配乐的英文一两句（没有配乐写 \"N/A\"）" + EN)
     chars = {c["name"]: c for c in bible["characters"]}
     props = {p["name"]: p for p in bible.get("props", [])}
     locs = {l["name"]: l for l in bible["locations"]}
     crowds = {c["world"]: c for c in bible.get("crowds", [])}
     for c in bible["characters"]:
-        for k in ("lock", "brief_en", "must_en", "height", "voice"):
+        for k in ("lock", "brief_en", "must_en", "height", "voice") + (("voice_en",) if need_en else ()):
             if k not in c:
-                E.append(f"人物「{c.get('name')}」缺 {k}")
+                E.append(f"人物「{c.get('name')}」缺 {k}" + (EN if k == "voice_en" else ""))
         if re.search(r"\d+\s*岁|岁的|小孩|孩子|少年|少女", c.get("lock", "")):
             E.append(f"人物「{c['name']}」描述锁写了年龄词，改成'二十出头的成年人'这类写法（不写具体岁数、不写未成年）")
     for l in bible["locations"]:
@@ -121,6 +130,8 @@ def validate(bible, board):
             if p not in props:
                 E.append(f"{tag} props 里的「{p}」不在设定的 props 里")
         shots = clip.get("shots", [])
+        if need_en and not clip.get("summary_en"):
+            E.append(f"{tag} 缺 summary_en：这一条的英文一句话" + EN)
         total = sum(s.get("dur", 0) for s in shots)
         if not 4 <= total <= 30:
             E.append(f"{tag} 总时长 {total} 秒，要在 4–30 秒（超过就拆条）")
@@ -160,6 +171,19 @@ def validate(bible, board):
                     E.append(f"{st} 插入镜头有动作，要写 hand：谁的手、什么样的手、袖口什么样（第 1 条实拍教训）；画面里确实没有手就写 no_hand: true")
             acts = s.get("action", [])
             acts = acts if isinstance(acts, list) else [acts]
+            if need_en:
+                for a in acts:
+                    if not (isinstance(a, dict) and a.get("en")):
+                        E.append(f"{st} 动作要写成 {{\"text\": 中文, \"en\": 英文}}（可加 \"at\": 秒）" + EN)
+                for snd in s.get("sound", []):
+                    if isinstance(snd, dict) and not snd.get("en"):
+                        E.append(f"{st} 声音「{snd.get('text')}」缺 en" + EN)
+                if s.get("crowd") and not s["crowd"].get("doing_en"):
+                    E.append(f"{st} crowd 缺 doing_en" + EN)
+                if t == "insert" and not s.get("object_en"):
+                    E.append(f"{st} 插入镜头缺 object_en（拍的物件，英文）" + EN)
+                if t == "insert" and s.get("hand") and not s.get("hand_en"):
+                    E.append(f"{st} 插入镜头缺 hand_en（谁的手，英文）" + EN)
             line = s.get("line")
             if line:
                 txt = line.get("text", "")
@@ -222,12 +246,14 @@ def items(bible, board):
     for c in bible["characters"]:
         must = f"MUST BE READABLE: {c['must_en']} PORTRAIT: {c.get('portrait_en', 'restrained expression, mouth closed.')}"
         push(c["name"], dict(tag=f"@{c['name']}", world="__people__", file=f"{c['name']}_三视图.png", type="人物三视图", rec=REC, deps="—",
+                             brief_en=c["brief_en"], voice_en=c.get("voice_en", ""),
                              use=use(f"@{c['name']}"), lock=c["lock"],
                              en=f"Create a character reference sheet for a {film}: {c['brief_en']}", must=must,
                              check=c.get("check", []) + ["正面全身像的脸模糊成椭圆，右侧大头像清楚", "没有文字"],
                              duty=f"「{c['name']}」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。"))
         for v in c.get("variants", []):
             push(v["name"], dict(tag=f"@{v['name']}", world="__people__", file=f"{v['name']}_三视图.png", type="状态变体", rec=REC,
+                                 brief_en=v.get("brief_en", c["brief_en"]), voice_en=c.get("voice_en", ""),
                                  deps=str(idx[c["name"]]), use=use(f"@{v['name']}"), lock=v["lock"],
                                  en=f"Edit Image 1, the character sheet of {c['brief_en']}. Keep the face, body, layout and background exactly the same.",
                                  must=f"Change only: {v['edit_en']}", check=v.get("check", []) + ["脸和版式不变"],
@@ -235,14 +261,14 @@ def items(bible, board):
     for p in bible.get("props", []):
         dep = [p["ref"]] if p.get("ref") in idx else []
         ref = "The prop must match the one carried by the character in Image 1. " if dep else ""
-        push("prop:" + p["name"], dict(tag=f"@prop_{p['name']}", world="__people__", file=f"道具_{p['name']}.png", type="道具", rec=REC,
+        push("prop:" + p["name"], dict(tag=f"@prop_{p['name']}", world="__people__", file=f"道具_{p['name']}.png", type="道具", rec=REC, brief_en=p["en"],
                                        deps=_num(dep, idx), use=use(f"@prop_{p['name']}"), lock=p["lock"],
                                        en=f"A prop reference for a {film}, on a seamless neutral grey background, three-quarter view: {p['en']} {ref}".strip(),
                                        must=p["must_en"] + " No text, symbols or labels.", check=p.get("check", []) + ["没有文字"],
                                        duty=f"「{p['name']}」：只取外形、材质和状态；不继承灰底。"))
     for l in bible["locations"]:
         hv = l.get("human_view")
-        push("loc:" + l["name"], dict(tag=f"@loc_{l['name']}", world=l["world"], file=f"场景_{l['name']}.png",
+        push("loc:" + l["name"], dict(tag=f"@loc_{l['name']}", world=l["world"], file=f"场景_{l['name']}.png", brief_en=l["en"],
                                       type="人类视角机位" if hv else "场景主图", rec=REC, deps="—", use=use(f"@loc_{l['name']}"), lock=l["lock"],
                                       en=f"A location reference image for a {film}, no characters: {l['en']}",
                                       must=l["must_en"] + " The scene is completely uninhabited. Full-frame image with no black bars. No readable text or signs.",
@@ -250,6 +276,7 @@ def items(bible, board):
                                       duty=f"「{l['name']}」：只取空间结构、材质和光；不作首帧，不继承构图。"))
         if l.get("grid"):
             push("grid:" + l["name"], dict(tag=f"@loc_{l['name']}_grid", world=l["world"], file=f"场景_{l['name']}_宫格.png", type="场景宫格", rec=REC,
+                                           brief_en="a 2x2 multi-view sheet of " + l["en"],
                                            deps=str(idx["loc:" + l["name"]]), use=use(f"@loc_{l['name']}"), lock=l["lock"],
                                            en="Image 1 is the only visual source. Rebuild the same place in 3D and render one 2x2 four-panel multi-view sheet, 16:9, no people, no text.",
                                            must=l.get("grid_en", "Panel 1: overhead plan. Panel 2: eye-level main view. Panel 3: reverse view. Panel 4: side view. Same materials and light in every panel."),
@@ -260,6 +287,7 @@ def items(bible, board):
         refs_en = (f"Images 1–{len(refs)} are the main characters." if len(refs) > 1 else "Image 1 is a main character.") if refs else ""
         it = K.crowd_item(c["world"], [tuple(r) for r in c["roster"]], f"@crowd_{c['world']}", f"群像_{c['world']}.png", _num(refs, idx),
                           use(f"@crowd_{c['world']}"), c["world"], refs_en, c["world_en"], film)
+        it["brief_en"] = c["world_en"]
         push("crowd:" + c["world"], it)
     return out
 
@@ -436,6 +464,14 @@ class Clip:
                 sh["allow_occlude"] = occ
             if s.get("allow_small"):
                 sh["allow_small"] = s["allow_small"]
+            acts = s.get("action", [])
+            acts = acts if isinstance(acts, list) else [acts]
+            sh["struct"] = {k: v for k, v in dict(
+                type=s["type"], size=s.get("size"), lens=cm["lens"], subject=s.get("subject"), fg=s.get("fg"), who=s.get("who"),
+                object=s.get("object"), object_en=s.get("object_en"), hand=s.get("hand"), hand_en=s.get("hand_en"), view=s.get("view"),
+                action=[{"at": a.get("at"), "zh": a.get("text"), "en": a.get("en")} if isinstance(a, dict) else {"zh": a} for a in acts],
+                line=s.get("line"), sound=[{"zh": x.get("text"), "en": x.get("en"), "source": x.get("source")} for x in s.get("sound", []) if isinstance(x, dict)],
+                crowd=s.get("crowd")).items() if v}  # 结构化镜头：可灵 / 海螺 / 万相的专用编译器用
             shots.append(sh)
             t0 += s["dur"]
         c = self.c
@@ -460,12 +496,13 @@ class Clip:
                     sfx=" ".join(f"<{x['text']}>" for s in c["shots"] for x in s.get("sound", [])) or "无",
                     constraint=axis_txt + c.get("constraint", ""), axis={"a": ots["fg"], "b": ots["subject"]} if ots else None,
                     people=self.people(), shots=shots, extra_boxes=[], fail=c.get("fail", "人物脸和服装与参考图不一致；画面出现文字。"),
-                    risk=c.get("risk", "—"), splice=c.get("splice", "—"))
+                    risk=c.get("risk", "—"), splice=c.get("splice", "—"), summary_en=c.get("summary_en"),
+                    style_en=self.style_en)
 
 
 def build_assets(proj):
     bible, board = load(proj)
-    E, W = validate(bible, board)
+    E, W = validate(bible, board, models_of(proj))
     if E:
         raise Bad("\n".join(E))
     en, _, note = style_map(bible)
@@ -476,7 +513,7 @@ def build_assets(proj):
 
 def build_specs(proj):
     bible, board = load(proj)
-    E, W = validate(bible, board)
+    E, W = validate(bible, board, models_of(proj))
     if E:
         raise Bad("\n".join(E))
     en, zh, _ = style_map(bible)
@@ -487,12 +524,15 @@ def build_specs(proj):
     seen = set()
     for c in board["clips"]:
         cl = Clip(bible, c, loc_index[c["location"]])
+        world = cl.loc["world"]
+        vid = lambda x: x.replace(" still;", " footage;").replace(" still ", " footage ").replace("still shot on", "footage shot on")  # noqa: E731  配方原是出图用语
+        cl.style_en = f"Setting look: {vid(en[world])}." + (f" People look: {vid(en['__people__'])}." if en["__people__"] != en[world] else "")
         clips.append(cl.build(idx))
         if c["location"] not in seen:
             boxes += cl.boxes()
             seen.add(c["location"])
     voice = {c["name"]: f"{c['name']}：{c['voice']}" for c in bible["characters"]}
-    texts = dict(THREE=bible["three"], STYLE=zh, MUSIC=bible["music"], VOICE=voice, LIP=bible.get("lip", LIP),
+    texts = dict(THREE=bible["three"], STYLE=zh, MUSIC=bible["music"], MUSIC_EN=bible.get("music_en"), VOICE=voice, LIP=bible.get("lip", LIP),
                  ANCHOR=ANCHOR + bible.get("anchor_extra", ""))
     os.makedirs(os.path.join(proj, "预演规格"), exist_ok=True)
     colors = "，".join(f"{PALETTE_ZH[i % 6]}色圆柱={c['name']}" for i, c in enumerate(bible["characters"])) + "，灰白方块=场景和道具"
@@ -506,7 +546,7 @@ def main():
     proj = os.path.abspath(sys.argv[2])
     try:
         if sys.argv[1] == "check":
-            E, W = validate(*load(proj))
+            E, W = validate(*load(proj), models_of(proj))
             for w in W:
                 print("WARN ", w)
             for e in E:

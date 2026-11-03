@@ -17,28 +17,34 @@
    "file": "参考图定版/阿青_三视图.png",
    "kind": "character",
    "name": "阿青",
-   "duty": "@图片N — 「阿青」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。"
+   "duty": "@图片N — 「阿青」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。",
+   "brief_en": "a tired young night-shift convenience-store clerk, clearly an adult in her early twenties.",
+   "voice_en": "a young woman with a light, slightly husky voice who speaks slowly"
   },
   {
    "tag": "@老周",
    "file": "参考图定版/老周_三视图.png",
    "kind": "character",
    "name": "老周",
-   "duty": "@图片N — 「老周」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。"
+   "duty": "@图片N — 「老周」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。",
+   "brief_en": "a heavy-set older man with deep crow's feet, a regular late-night customer.",
+   "voice_en": "an older man with a low, hoarse voice who speaks briefly"
   },
   {
    "tag": "@prop_香烟",
    "file": "参考图定版/道具_香烟.png",
    "kind": "prop",
    "name": "香烟",
-   "duty": "@图片N — 「香烟」：只取外形、材质和状态；不继承灰底。"
+   "duty": "@图片N — 「香烟」：只取外形、材质和状态；不继承灰底。",
+   "brief_en": "one plain white cigarette pack with no text or logo, slightly crumpled."
   },
   {
    "tag": "@loc_便利店",
    "file": "参考图定版/场景_便利店.png",
    "kind": "scene",
    "name": "便利店",
-   "duty": "@图片N — 「便利店」：只取空间结构、材质和光；不作首帧，不继承构图。"
+   "duty": "@图片N — 「便利店」：只取空间结构、材质和光；不作首帧，不继承构图。",
+   "brief_en": "a small convenience store late at night."
   }
  ],
  "count": "画面中始终只有 2 个有名字的角色：阿青（深蓝工装、左手旧电子表）、老周（灰夹克、肩膀淋湿）。每一镜画面里有谁，以时间轴里\"画面里\"那一句为准。",
@@ -68,7 +74,33 @@
    "body": "画面里：阿青。84°，固定；冷白灯管下的三排货架，收银台上一盏暖黄台灯照着站在后面的阿青；<冰柜嗡嗡声> <门外的雨声>。",
    "allow_occlude": [
     "便利店_Door"
-   ]
+   ],
+   "struct": {
+    "type": "wide",
+    "lens": 24,
+    "who": [
+     "阿青"
+    ],
+    "action": [
+     {
+      "at": null,
+      "zh": "冷白灯管下的三排货架，收银台上一盏暖黄台灯照着站在后面的阿青",
+      "en": "cold white tube lights over three aisles; a small warm desk lamp on the counter lights the clerk standing behind it"
+     }
+    ],
+    "sound": [
+     {
+      "zh": "冰柜嗡嗡声",
+      "en": "the low hum of a fridge",
+      "source": "画外"
+     },
+     {
+      "zh": "门外的雨声",
+      "en": "steady rain outside the door",
+      "source": "画外"
+     }
+    ]
+   }
   },
   {
    "t0": 4.0,
@@ -78,7 +110,24 @@
    "body": "画面里：阿青。47°，近景，固定；第 1 秒，她抬起左手看了一眼旧电子表；阿青说：{又是三点。}",
    "allow_occlude": [
     "便利店_Door"
-   ]
+   ],
+   "struct": {
+    "type": "single",
+    "size": "近景",
+    "lens": 50,
+    "subject": "阿青",
+    "action": [
+     {
+      "at": 1,
+      "zh": "她抬起左手看了一眼旧电子表",
+      "en": "she raises her left hand and glances at her old digital watch"
+     }
+    ],
+    "line": {
+     "who": "阿青",
+     "text": "又是三点。"
+    }
+   }
   },
   {
    "t0": 8.0,
@@ -88,7 +137,32 @@
    "body": "画面里：画面一侧前景阿青虚化的肩膀、老周。47°，中景，过肩；第 1 秒，玻璃门被推开，老周湿着肩膀走进来；老周说：{老样子。}；<推门的风铃声>。",
    "allow_occlude": [
     "便利店_Door"
-   ]
+   ],
+   "struct": {
+    "type": "ots",
+    "size": "中景",
+    "lens": 50,
+    "subject": "老周",
+    "fg": "阿青",
+    "action": [
+     {
+      "at": 1,
+      "zh": "玻璃门被推开，老周湿着肩膀走进来",
+      "en": "the glass door swings open and the older man walks in with rain-wet shoulders"
+     }
+    ],
+    "line": {
+     "who": "老周",
+     "text": "老样子。"
+    },
+    "sound": [
+     {
+      "zh": "推门的风铃声",
+      "en": "a door chime",
+      "source": "门口"
+     }
+    ]
+   }
   },
   {
    "t0": 12.0,
@@ -98,7 +172,22 @@
    "body": "画面里：阿青的右手（年轻女人的手，深蓝色旧袖口）和台面。47°，俯拍特写；她从柜台下摸出一包素白烟盒，放在台面上。",
    "allow_occlude": [
     "便利店_Door"
-   ]
+   ],
+   "struct": {
+    "type": "insert",
+    "lens": 50,
+    "object": "台面",
+    "object_en": "the wooden countertop",
+    "hand": "阿青的右手（年轻女人的手，深蓝色旧袖口）",
+    "hand_en": "the clerk's right hand (a young woman's hand, worn dark-blue sleeve cuff)",
+    "action": [
+     {
+      "at": null,
+      "zh": "她从柜台下摸出一包素白烟盒，放在台面上",
+      "en": "it takes a plain white cigarette pack from under the counter and sets it on the countertop"
+     }
+    ]
+   }
   }
  ],
  "constraint": "人物都是正常的人体结构：两只手各五根手指。阿青和老周对话的轴线固定，整场不换边；收银台在门的左手边；店里只有阿青和老周。",
@@ -110,5 +199,8 @@
  "axis": {
   "a": "阿青",
   "b": "老周"
- }
+ },
+ "style_en": "Setting look: cinematic 35mm footage; a warm amber practical light source on the subject against a cold blue glow in the background; strong warm-cold color separation; volumetric haze catching the light; shallow depth of field; deep low-key shadows; soft glow around highlights; clean, noise-free image. People look: cinematic footage shot on a 35mm lens; dusk blue-grey ambient light with a faint warm orange rim from behind; low contrast; long-lens compression and shallow depth of field; natural, realistic skin with subtle texture and a soft natural sheen, not retouched and not over-sharpened; restrained, unposed expression; clean, noise-free image.",
+ "summary_en": "At three in the morning, a regular customer comes into a quiet convenience store for his usual pack of cigarettes.",
+ "music_en": "N/A"
 }

@@ -1,30 +1,27 @@
-（本段是第 1 条的第 12–16 秒，单独生成，剪辑时按顺序接回去。）
-【参考素材】
-参考图1 是「阿青」的外观（脸只取右侧大头像，正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式）。
-参考图2 是「老周」的外观（脸只取右侧大头像，正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式）。
-参考图3 是「香烟」的外形与材质（不继承灰底与并排版式）。
-参考图4 是「便利店」的空间、材质和光（不作首帧，不继承构图）。
-参考视频1 是本条的白模预演，只提供镜头路线、切点、构图、空间布局、人物整体位置与路线、事件先后；外形、识别色、灰色无材质画面和中性光都不继承。识别色：黄色圆柱=阿青，蓝色圆柱=老周，灰白方块=场景和道具。
-角色外貌、服饰、位置、台词互不交换；画面质感从第一帧开始就按下面的质感描述。
+subject_definitions:
+<Subject 1>: 阿青 — a tired young night-shift convenience-store clerk, clearly an adult in her early twenties. Appearance from uploaded image 1 (face only from the large portrait on the right; the blurred oval on the full-body view is not a face; backdrop and sheet layout not carried over).
+<Subject 2>: 老周 — a heavy-set older man with deep crow's feet, a regular late-night customer. Appearance from uploaded image 2 (face only from the large portrait on the right; the blurred oval on the full-body view is not a face; backdrop and sheet layout not carried over).
+<Subject 3>: 香烟 — one plain white cigarette pack with no text or logo, slightly crumpled. Shape and material come from uploaded reference image 3; the grey backdrop is not carried over.
+<Subject 4>: 便利店 — a small convenience store late at night. Spatial layout, materials and light come from uploaded reference image 4; it is not a first frame and its composition is not copied.
+<Video 1>: grey whitebox previs of this clip. It defines only the camera path, cut points, framing, blocking and the order of events; its grey boxes, colored proxy cylinders and neutral light are not carried over. Proxies: yellow cylinder = <Subject 1>; blue cylinder = <Subject 2>; grey boxes = set and props.
 
-画面中始终只有 2 个有名字的角色：阿青（深蓝工装、左手旧电子表）、老周（灰夹克、肩膀淋湿）。每一镜画面里有谁，以时间轴里"画面里"那一句为准。
+summary:
+[reference generation] A 4-second live-action clip. At three in the morning, a regular customer comes into a quiet convenience store for his usual pack of cigarettes. This is seconds 12–16 of clip 1, generated on its own and joined in the edit.
 
-【总体设定】
-阿青在便利店值夜班，老周每天凌晨三点来买一包烟。
-世界锁：只有一个世界，深夜下雨的小便利店，安静、冷暖对冲；屋里暖黄台灯和冷白灯管，门外是雨夜的街。
-质感：便利店（R05）：35 毫米电影剧照质感；人物身上是暖琥珀色的实用光，背景是冷蓝色的光；冷暖分明；有体积雾接住光线；浅景深；暗部深沉；高光边缘有柔和光晕；画面干净；人物（R04）：35 毫米镜头的电影剧照质感；黄昏灰蓝的环境光，身后一道淡淡的暖橙轮廓光；低反差；长焦压缩，浅景深；皮肤自然真实，有细微纹理，不磨皮也不过度锐化；表情克制、不摆拍；画面干净。
+retention_analysis:
+<Subject 1>: fully_preserved — face, hair, costume and body shape
+<Subject 2>: fully_preserved — face, hair, costume and body shape
+<Subject 3>: fully_preserved — shape, material and state
+<Subject 4>: partially_preserved — layout, materials and lighting
+<Video 1>: weak_reference — camera path, cut timing, framing and blocking only
 
-【镜头】
-本条是一个连续镜头，中途不切。
+detailed_description:
+Live-action cinematic footage. Setting look: cinematic 35mm footage; a warm amber practical light source on the subject against a cold blue glow in the background; strong warm-cold color separation; volumetric haze catching the light; shallow depth of field; deep low-key shadows; soft glow around highlights; clean, noise-free image. People look: cinematic footage shot on a 35mm lens; dusk blue-grey ambient light with a faint warm orange rim from behind; low contrast; long-lens compression and shallow depth of field; natural, realistic skin with subtle texture and a soft natural sheen, not retouched and not over-sharpened; restrained, unposed expression; clean, noise-free image.
+Every shot change is a hard cut with no fades or dissolves; each shot keeps one camera position and one main camera move. There are no subtitles and no on-screen text.
+[Shot 1] Top-down insert close-up on a 50 mm lens, static camera, matching 0–4 s of <Video 1>. In frame: the clerk's right hand (a young woman's hand, worn dark-blue sleeve cuff) and the wooden countertop. It takes a plain white cigarette pack from under the counter and sets it on the countertop.
 
-【时间轴】
-0–4 秒（同参考视频1 的 0–4 秒）｜递烟：画面里：阿青的右手（年轻女人的手，深蓝色旧袖口）和台面。47°，俯拍特写；她从柜台下摸出一包素白烟盒，放在台面上。
+overall_soundscape:
+Quiet room tone with the natural sounds of the actions on screen.
 
-【声音】
-配乐：没有配乐，只有冰柜的嗡嗡声、门外的雨声和推门的风铃声。
-现场声：<冰柜嗡嗡声> <门外的雨声> <推门的风铃声>。
-音色：阿青：声音轻，有点哑，语速慢。老周：声音低，沙哑，话少。
-对白：普通话，自然口语。所有角色只说引号里的台词；每句台词只有说话的那一个角色动嘴，其余角色闭着嘴；画外音不对任何人的口型；人声干净贴近，有人说话时配乐和环境声自动压低。画面全程是纯影像，没有字幕。
-
-【约束】
-人物都是正常的人体结构：两只手各五根手指。阿青和老周对话的轴线固定，整场不换边；收银台在门的左手边；店里只有阿青和老周。
+non_diegetic_music:
+N/A

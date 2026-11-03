@@ -197,7 +197,7 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
         for k, sh in enumerate(c["shots"], 1):
             shots_prev.append(dict(sh["cam"], start=sh["t0"]))
             s = {"t0": sh["t0"], "t1": sh["t1"], "id": k, "name": sh["name"], "body": sh["body"]}
-            for key in ("allow_small", "new_axis", "allow_occlude"):
+            for key in ("allow_small", "new_axis", "allow_occlude", "struct"):
                 if sh.get(key):
                     s[key] = sh[key]
             spec_shots.append(s)
@@ -209,7 +209,11 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
             it = idx[t]
             kind = _kind(it)
             name = t.lstrip("@").replace("loc_", "").replace("prop_", "").replace("crowd_", "群演_")
-            assets.append({"tag": t, "file": "参考图定版/" + it["file"], "kind": kind, "name": name, "duty": "@图片N — " + it["duty"]})
+            a = {"tag": t, "file": "参考图定版/" + it["file"], "kind": kind, "name": name, "duty": "@图片N — " + it["duty"]}
+            for key in ("brief_en", "voice_en"):  # 英文简述：海螺 H3 官方格式的 subject_definitions 用
+                if it.get(key):
+                    a[key] = it[key]
+            assets.append(a)
             if t.startswith("@loc_") and it["lock"] not in geo:  # 宫格和主图共用一条空间锁，只写一次
                 geo.append(it["lock"])
             if kind == "character":
@@ -226,6 +230,11 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
             spec["axis"] = c["axis"]
         if c.get("chorus"):
             spec["chorus"] = c["chorus"]
+        for key in ("style_en", "summary_en"):
+            if c.get(key):
+                spec[key] = c[key]
+        if texts.get("MUSIC_EN"):
+            spec["music_en"] = texts["MUSIC_EN"]
         json.dump(spec, open(os.path.join(project_root, "交付", "规格单", f"第{n}条.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
         out.append((n, c["dur"], len(spec_shots)))
         print(f"第{n}条 {c['dur']} 秒 {len(spec_shots)} 镜")

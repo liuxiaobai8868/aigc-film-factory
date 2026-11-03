@@ -17,28 +17,34 @@
    "file": "参考图定版/阿青_三视图.png",
    "kind": "character",
    "name": "阿青",
-   "duty": "@图片N — 「阿青」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。"
+   "duty": "@图片N — 「阿青」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。",
+   "brief_en": "a tired young night-shift convenience-store clerk, clearly an adult in her early twenties.",
+   "voice_en": "a young woman with a light, slightly husky voice who speaks slowly"
   },
   {
    "tag": "@老周",
    "file": "参考图定版/老周_三视图.png",
    "kind": "character",
    "name": "老周",
-   "duty": "@图片N — 「老周」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。"
+   "duty": "@图片N — 「老周」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。",
+   "brief_en": "a heavy-set older man with deep crow's feet, a regular late-night customer.",
+   "voice_en": "an older man with a low, hoarse voice who speaks briefly"
   },
   {
    "tag": "@loc_便利店",
    "file": "参考图定版/场景_便利店.png",
    "kind": "scene",
    "name": "便利店",
-   "duty": "@图片N — 「便利店」：只取空间结构、材质和光；不作首帧，不继承构图。"
+   "duty": "@图片N — 「便利店」：只取空间结构、材质和光；不作首帧，不继承构图。",
+   "brief_en": "a small convenience store late at night."
   },
   {
    "tag": "@crowd_便利店",
    "file": "参考图定版/群像_便利店.png",
    "kind": "crowd",
    "name": "群演_便利店",
-   "duty": "@图片N — 「便利店群演」：画面里的群众演员从这张图里取长相、服装和道具，每个人只出现一次、不重复；这张图里的人都不是主角；不继承白底和排队版式。"
+   "duty": "@图片N — 「便利店群演」：画面里的群众演员从这张图里取长相、服装和道具，每个人只出现一次、不重复；这张图里的人都不是主角；不继承白底和排队版式。",
+   "brief_en": "ordinary people out late on a rainy night in a small city"
   }
  ],
  "count": "画面中始终只有 2 个有名字的角色：阿青（深蓝工装、左手旧电子表）、老周（灰夹克、肩膀淋湿）。另有便利店群演，按编号取自群像。每一镜画面里有谁，以时间轴里\"画面里\"那一句为准。",
@@ -67,7 +73,25 @@
    "body": "画面里：画面一侧前景老周虚化的肩膀、阿青。47°，中景，过肩；第 1 秒，她把零钱推过去；阿青说：{雨快停了。}",
    "allow_occlude": [
     "便利店_Door"
-   ]
+   ],
+   "struct": {
+    "type": "ots",
+    "size": "中景",
+    "lens": 50,
+    "subject": "阿青",
+    "fg": "老周",
+    "action": [
+     {
+      "at": 1,
+      "zh": "她把零钱推过去",
+      "en": "she slides the change across the counter"
+     }
+    ],
+    "line": {
+     "who": "阿青",
+     "text": "雨快停了。"
+    }
+   }
   },
   {
    "t0": 5.0,
@@ -77,7 +101,43 @@
    "body": "画面里：老周、便利店群演（2、5、9 号）在门外屋檐下躲雨，陆续走开。84°，固定；老周推门出去，走进渐小的雨里；<推门的风铃声> <渐小的雨声>。",
    "allow_occlude": [
     "便利店_Door"
-   ]
+   ],
+   "struct": {
+    "type": "wide",
+    "lens": 24,
+    "who": [
+     "老周"
+    ],
+    "view": "朝门口",
+    "action": [
+     {
+      "at": null,
+      "zh": "老周推门出去，走进渐小的雨里",
+      "en": "the older man pushes the door open and walks out into the thinning rain"
+     }
+    ],
+    "sound": [
+     {
+      "zh": "推门的风铃声",
+      "en": "a door chime",
+      "source": "门口"
+     },
+     {
+      "zh": "渐小的雨声",
+      "en": "rain easing off",
+      "source": "画外"
+     }
+    ],
+    "crowd": {
+     "ids": [
+      2,
+      5,
+      9
+     ],
+     "doing": "在门外屋檐下躲雨，陆续走开",
+     "doing_en": "sheltering under the awning outside, then drifting away one by one"
+    }
+   }
   },
   {
    "t0": 10.0,
@@ -87,7 +147,20 @@
    "body": "画面里：阿青。47°，近景，固定；她看着门口，没有说话。",
    "allow_occlude": [
     "便利店_Door"
-   ]
+   ],
+   "struct": {
+    "type": "single",
+    "size": "近景",
+    "lens": 50,
+    "subject": "阿青",
+    "action": [
+     {
+      "at": null,
+      "zh": "她看着门口，没有说话",
+      "en": "she watches the door without a word"
+     }
+    ]
+   }
   }
  ],
  "constraint": "人物都是正常的人体结构：两只手各五根手指。老周和阿青对话的轴线固定，整场不换边；阿青始终在收银台后。",
@@ -99,5 +172,8 @@
  "axis": {
   "a": "老周",
   "b": "阿青"
- }
+ },
+ "style_en": "Setting look: cinematic 35mm footage; a warm amber practical light source on the subject against a cold blue glow in the background; strong warm-cold color separation; volumetric haze catching the light; shallow depth of field; deep low-key shadows; soft glow around highlights; clean, noise-free image. People look: cinematic footage shot on a 35mm lens; dusk blue-grey ambient light with a faint warm orange rim from behind; low contrast; long-lens compression and shallow depth of field; natural, realistic skin with subtle texture and a soft natural sheen, not retouched and not over-sharpened; restrained, unposed expression; clean, noise-free image.",
+ "summary_en": "The customer pays and leaves; the people sheltering from the rain outside drift away.",
+ "music_en": "N/A"
 }

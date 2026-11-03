@@ -41,14 +41,19 @@
      "who": [
       "阿青"
      ],
-     "action": "冷白灯管下的三排货架，收银台上一盏暖黄台灯照着站在后面的阿青",
+     "action": {
+      "text": "冷白灯管下的三排货架，收银台上一盏暖黄台灯照着站在后面的阿青",
+      "en": "cold white tube lights over three aisles; a small warm desk lamp on the counter lights the clerk standing behind it"
+     },
      "sound": [
       {
        "text": "冰柜嗡嗡声",
+       "en": "the low hum of a fridge",
        "source": "画外"
       },
       {
        "text": "门外的雨声",
+       "en": "steady rain outside the door",
        "source": "画外"
       }
      ]
@@ -61,7 +66,8 @@
      "size": "近景",
      "action": {
       "at": 1,
-      "text": "她抬起左手看了一眼旧电子表"
+      "text": "她抬起左手看了一眼旧电子表",
+      "en": "she raises her left hand and glances at her old digital watch"
      },
      "line": {
       "who": "阿青",
@@ -77,7 +83,8 @@
      "size": "中景",
      "action": {
       "at": 1,
-      "text": "玻璃门被推开，老周湿着肩膀走进来"
+      "text": "玻璃门被推开，老周湿着肩膀走进来",
+      "en": "the glass door swings open and the older man walks in with rain-wet shoulders"
      },
      "line": {
       "who": "老周",
@@ -86,7 +93,8 @@
      "sound": [
       {
        "text": "推门的风铃声",
-       "source": "门口"
+       "source": "门口",
+       "en": "a door chime"
       }
      ]
     },
@@ -96,11 +104,17 @@
      "type": "insert",
      "object": "台面",
      "hand": "阿青的右手（年轻女人的手，深蓝色旧袖口）",
-     "action": "她从柜台下摸出一包素白烟盒，放在台面上"
+     "action": {
+      "text": "她从柜台下摸出一包素白烟盒，放在台面上",
+      "en": "it takes a plain white cigarette pack from under the counter and sets it on the countertop"
+     },
+     "object_en": "the wooden countertop",
+     "hand_en": "the clerk's right hand (a young woman's hand, worn dark-blue sleeve cuff)"
     }
    ],
    "constraint": "收银台在门的左手边；店里只有阿青和老周。",
-   "splice": "出口：烟盒放在台面上。"
+   "splice": "出口：烟盒放在台面上。",
+   "summary_en": "At three in the morning, a regular customer comes into a quiet convenience store for his usual pack of cigarettes."
   },
   {
    "n": "2",
@@ -142,7 +156,8 @@
      "size": "中景",
      "action": {
       "at": 1,
-      "text": "她把零钱推过去"
+      "text": "她把零钱推过去",
+      "en": "she slides the change across the counter"
      },
      "line": {
       "who": "阿青",
@@ -162,16 +177,22 @@
        5,
        9
       ],
-      "doing": "在门外屋檐下躲雨，陆续走开"
+      "doing": "在门外屋檐下躲雨，陆续走开",
+      "doing_en": "sheltering under the awning outside, then drifting away one by one"
      },
-     "action": "老周推门出去，走进渐小的雨里",
+     "action": {
+      "text": "老周推门出去，走进渐小的雨里",
+      "en": "the older man pushes the door open and walks out into the thinning rain"
+     },
      "sound": [
       {
        "text": "推门的风铃声",
+       "en": "a door chime",
        "source": "门口"
       },
       {
        "text": "渐小的雨声",
+       "en": "rain easing off",
        "source": "画外"
       }
      ],
@@ -183,11 +204,15 @@
      "type": "single",
      "subject": "阿青",
      "size": "近景",
-     "action": "她看着门口，没有说话"
+     "action": {
+      "text": "她看着门口，没有说话",
+      "en": "she watches the door without a word"
+     }
     }
    ],
    "constraint": "阿青始终在收银台后。",
-   "splice": "出口：阿青看着门口。"
+   "splice": "出口：阿青看着门口。",
+   "summary_en": "The customer pays and leaves; the people sheltering from the rain outside drift away."
   }
  ]
 }

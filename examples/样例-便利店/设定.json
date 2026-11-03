@@ -24,7 +24,8 @@
     "深蓝工装、白帆布鞋",
     "电子表在左手"
    ],
-   "voice": "声音轻，有点哑，语速慢。"
+   "voice": "声音轻，有点哑，语速慢。",
+   "voice_en": "a young woman with a light, slightly husky voice who speaks slowly"
   },
   {
    "name": "老周",
@@ -38,7 +39,8 @@
     "灰夹克肩膀是湿的",
     "花白寸头"
    ],
-   "voice": "声音低，沙哑，话少。"
+   "voice": "声音低，沙哑，话少。",
+   "voice_en": "an older man with a low, hoarse voice who speaks briefly"
   }
  ],
  "props": [
@@ -286,5 +288,6 @@
     ]
    ]
   }
- ]
+ ],
+ "music_en": "N/A"
 }

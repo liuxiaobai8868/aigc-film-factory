@@ -1,31 +1,29 @@
-【参考素材】
-参考图1 是「阿青」的外观（脸只取右侧大头像，正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式）。
-参考图2 是「老周」的外观（脸只取右侧大头像，正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式）。
-参考图3 是「便利店」的空间、材质和光（不作首帧，不继承构图）。
-参考图4 是「群演_便利店」的群众演员：画面里的路人从这张图里按编号取长相、服装和道具（第 1 排从左到右 1–7，第 2 排 8–14），每人只出现一次；这些人都不是主角；不继承白底和排队版式。
-参考视频1 是本条的白模预演，只提供镜头路线、切点、构图、空间布局、人物整体位置与路线、事件先后；外形、识别色、灰色无材质画面和中性光都不继承。识别色：黄色圆柱=阿青，蓝色圆柱=老周，灰白方块=场景和道具。
-角色外貌、服饰、位置、台词互不交换；画面质感从第一帧开始就按下面的质感描述。
+subject_definitions:
+<Subject 1>: 阿青 — a tired young night-shift convenience-store clerk, clearly an adult in her early twenties. Appearance from uploaded image 1 (face only from the large portrait on the right; the blurred oval on the full-body view is not a face; backdrop and sheet layout not carried over).
+<Subject 2>: 老周 — a heavy-set older man with deep crow's feet, a regular late-night customer. Appearance from uploaded image 2 (face only from the large portrait on the right; the blurred oval on the full-body view is not a face; backdrop and sheet layout not carried over).
+<Subject 3>: 便利店 — a small convenience store late at night. Spatial layout, materials and light come from uploaded reference image 3; it is not a first frame and its composition is not copied.
+<Subject 4>: crowd extras — ordinary people out late on a rainy night in a small city. They come from uploaded reference image 4, a lineup sheet of 14 numbered people (row 1 left to right = 1–7, row 2 = 8–14); only the numbered people named below appear, each at most once, and none of them is a main character. The white backdrop and the lineup layout are not carried over.
+<Video 1>: grey whitebox previs of this clip. It defines only the camera path, cut points, framing, blocking and the order of events; its grey boxes, colored proxy cylinders and neutral light are not carried over. Proxies: yellow cylinder = <Subject 1>; blue cylinder = <Subject 2>; grey boxes = set and props.
 
-画面中始终只有 2 个有名字的角色：阿青（深蓝工装、左手旧电子表）、老周（灰夹克、肩膀淋湿）。另有便利店群演，按编号取自群像。每一镜画面里有谁，以时间轴里"画面里"那一句为准。
+summary:
+[reference generation] A 14-second live-action clip. The customer pays and leaves; the people sheltering from the rain outside drift away.
 
-【总体设定】
-老周买完烟，雨快停了。
-世界锁：只有一个世界，深夜下雨的小便利店，安静、冷暖对冲；屋里暖黄台灯和冷白灯管，门外是雨夜的街。
-质感：便利店（R05）：35 毫米电影剧照质感；人物身上是暖琥珀色的实用光，背景是冷蓝色的光；冷暖分明；有体积雾接住光线；浅景深；暗部深沉；高光边缘有柔和光晕；画面干净；人物（R04）：35 毫米镜头的电影剧照质感；黄昏灰蓝的环境光，身后一道淡淡的暖橙轮廓光；低反差；长焦压缩，浅景深；皮肤自然真实，有细微纹理，不磨皮也不过度锐化；表情克制、不摆拍；画面干净。
+retention_analysis:
+<Subject 1>: fully_preserved — face, hair, costume and body shape
+<Subject 2>: fully_preserved — face, hair, costume and body shape
+<Subject 3>: partially_preserved — layout, materials and lighting
+<Subject 4>: attribute_transfer — faces, costumes and props of the numbered extras
+<Video 1>: weak_reference — camera path, cut timing, framing and blocking only
 
-【镜头】
-本条只在以下时间点硬切：5、10 秒（与预演视频一致），镜头不自行切换；同一个镜头号是同一个机位。每镜一个视场角、一个主运镜。
+detailed_description:
+Live-action cinematic footage. Setting look: cinematic 35mm footage; a warm amber practical light source on the subject against a cold blue glow in the background; strong warm-cold color separation; volumetric haze catching the light; shallow depth of field; deep low-key shadows; soft glow around highlights; clean, noise-free image. People look: cinematic footage shot on a 35mm lens; dusk blue-grey ambient light with a faint warm orange rim from behind; low contrast; long-lens compression and shallow depth of field; natural, realistic skin with subtle texture and a soft natural sheen, not retouched and not over-sharpened; restrained, unposed expression; clean, noise-free image.
+Every shot change is a hard cut with no fades or dissolves; each shot keeps one camera position and one main camera move. There are no subtitles and no on-screen text.
+[Shot 1] Medium over-the-shoulder shot on a 50 mm lens, static camera, matching 0–5 s of <Video 1>. In frame: <Subject 2>'s blurred shoulder in the foreground; <Subject 1>. At 00:01.000, she slides the change across the counter. <Subject 1> (S1), a young woman with a light, slightly husky voice who speaks slowly, says: <d>[Chinese] 雨快停了。</d> Only the speaker's lips move.
+[Shot 2] At 00:05.000, hard cut to a wide shot on a 24 mm lens, static camera, matching 5–10 s of <Video 1>. In frame: <Subject 2>; crowd extras number 2, 5 and 9 from <Subject 4>, sheltering under the awning outside, then drifting away one by one. The older man pushes the door open and walks out into the thinning rain.
+[Shot 3] At 00:10.000, hard cut to a medium close-up single shot on a 50 mm lens, static camera, matching 10–14 s of <Video 1>. In frame: <Subject 1>. She watches the door without a word.
 
-【时间轴】
-0–5 秒（同参考视频1 的 0–5 秒）｜找零：画面里：画面一侧前景老周虚化的肩膀、阿青。47°，中景，过肩；第 1 秒，她把零钱推过去；阿青说：“雨快停了。”
-5–10 秒（同参考视频1 的 5–10 秒）｜散去：画面里：老周、便利店群演（2、5、9 号）在门外屋檐下躲雨，陆续走开。84°，固定；老周推门出去，走进渐小的雨里；<推门的风铃声> <渐小的雨声>。
-10–14 秒（同参考视频1 的 10–14 秒）｜目送：画面里：阿青。47°，近景，固定；她看着门口，没有说话。
+overall_soundscape:
+Throughout the clip: a door chime, rain easing off.
 
-【声音】
-配乐：没有配乐，只有冰柜的嗡嗡声、门外的雨声和推门的风铃声。
-现场声：<推门的风铃声> <渐小的雨声>。
-音色：阿青：声音轻，有点哑，语速慢。
-对白：普通话，自然口语。所有角色只说引号里的台词；每句台词只有说话的那一个角色动嘴，其余角色闭着嘴；画外音不对任何人的口型；人声干净贴近，有人说话时配乐和环境声自动压低。画面全程是纯影像，没有字幕。
-
-【约束】
-人物都是正常的人体结构：两只手各五根手指。老周和阿青对话的轴线固定，整场不换边；阿青始终在收银台后。
+non_diegetic_music:
+N/A
