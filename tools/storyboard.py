@@ -27,6 +27,29 @@ SIZES = {"大特写": (135, 0.6, 0.93), "特写": (85, 0.9, 0.92), "近景": (50
          "全景": (35, 5.0, 0.6), "大全景": (24, 11.0, 0.55)}  # 景别 → (焦距, 机位距离 米, 机位高度占身高比例)
 TYPES = ("wide", "single", "ots", "insert", "track", "pov")
 MOVE = {"wide": "固定", "single": "固定", "ots": "过肩", "insert": "俯拍特写", "track": "跟拍", "pov": "主观视角"}
+# 有动机的运镜（docs/20 第四节"张力"）：kind → (中文, 英文)
+MOVES = {"push": ("推近", "the camera pushes in"), "pull": ("拉远", "the camera pulls back"),
+         "truck_left": ("向左横移", "the camera trucks left"), "truck_right": ("向右横移", "the camera trucks right"),
+         "rise": ("升起", "the camera cranes up"), "drop": ("降下", "the camera cranes down"),
+         "orbit_left": ("向左环绕", "the camera arcs left around the subject"), "orbit_right": ("向右环绕", "the camera arcs right around the subject"),
+         "handheld": ("手持，轻微晃动", "handheld, with a slight unsteady sway")}
+SPEEDS = {"slow": ("缓慢", "slowly"), "steady": ("匀速", "steadily"), "sudden": ("突然", "suddenly")}
+SIZE_RANK = {"大特写": 0, "特写": 1, "近景": 2, "中景": 3, "全景": 4, "大全景": 5}
+
+
+def move_text(mv, lang="zh"):
+    kind, sp = MOVES[mv["kind"]], SPEEDS.get(mv.get("speed", "slow"), SPEEDS["slow"])
+    if mv["kind"] == "handheld":
+        return kind[0] if lang == "zh" else kind[1]
+    if lang == "zh":
+        return f"镜头{sp[0]}{kind[0]}" + (f"到{mv['to']}" if mv.get("to") else "")
+    return f"{kind[1]} {sp[1]}"
+
+
+def shot_rank(s):
+    if s.get("size") in SIZE_RANK:
+        return SIZE_RANK[s["size"]]
+    return {"wide": 4, "insert": 1}.get(s.get("type"), 2 if s.get("type") == "single" else 3)
 PALETTE = [[0.95, 0.8, 0.15], [0.2, 0.35, 0.85], [0.85, 0.2, 0.15], [0.95, 0.6, 0.75], [0.3, 0.75, 0.4], [0.6, 0.35, 0.8]]
 PALETTE_ZH = ["黄", "蓝", "红", "粉", "绿", "紫"]
 BOXCOLOR = {"wood": [0.35, 0.25, 0.18], "white": [0.92, 0.92, 0.9], "stone": [0.45, 0.47, 0.5], "floor": [0.5, 0.5, 0.52],
@@ -100,6 +123,10 @@ def validate(bible, board, models=("seedance",)):
         for k in ("lock", "brief_en", "must_en", "height", "voice") + (("voice_en",) if need_en else ()):
             if k not in c:
                 E.append(f"人物「{c.get('name')}」缺 {k}" + (EN if k == "voice_en" else ""))
+        if len(str(c.get("silhouette", ""))) < 4:
+            E.append(f"人物「{c.get('name')}」缺 silhouette：剪影识别点，只看轮廓就认得出是谁（发型、体型、标志物件）（crew/07）")
+        if re.search(r"毛孔|瑕疵|颗粒|pores?|blemish|grain", c.get("lock", "") + c.get("must_en", ""), re.I):
+            E.append(f"人物「{c.get('name')}」描述里写了毛孔 / 瑕疵 / 颗粒：出图模型会照字面画成砂纸皮肤和噪点（docs/16 第二节），改写成具体的雀斑、痣、细纹和光泽")
         if re.search(r"\d+\s*岁|岁的|小孩|孩子|少年|少女", c.get("lock", "")):
             E.append(f"人物「{c['name']}」描述锁写了年龄词，改成'二十出头的成年人'这类写法（不写具体岁数、不写未成年）")
     for l in bible["locations"]:
@@ -108,6 +135,14 @@ def validate(bible, board, models=("seedance",)):
                 E.append(f"场景「{l.get('name')}」缺 {k}")
         if l.get("world") not in bible["worlds"]:
             E.append(f"场景「{l.get('name')}」的 world 不在 worlds 里")
+        for k, zh in (("light", "光逻辑：主光是什么、在哪、什么色温，辅光从哪来"), ("era", "时代锁：可以出现 / 不能出现的物件"),
+                      ("wear", "使用痕迹：被谁用过、怎么磨损（磨亮的扶手、墙角水渍……）")):
+            if len(str(l.get(k, ""))) < 6:
+                E.append(f"场景「{l.get('name')}」缺美术字段 {k}：{zh}（crew/06，docs/20 美术指导）")
+        if len(str(l.get("contrast", ""))) < 6:
+            E.append(f"场景「{l.get('name')}」缺 contrast：这个场景的对冲，明暗 / 冷暖 / 大小 / 新旧 / 静动至少一组（docs/20 第四节\"张力\"）")
+        if not l.get("anchor"):
+            E.append(f"场景「{l.get('name')}」缺 anchor：锚点物列表，观众记得住、模型钉得住的 1–3 件东西（crew/06）")
         st = l.get("stage", {})
         if "establish" not in st or "marks" not in st:
             E.append(f"场景「{l.get('name')}」的 stage 要有 marks（站位点）和 establish（全景机位）")
@@ -124,6 +159,11 @@ def validate(bible, board, models=("seedance",)):
                 E.append(f"群像「{c.get('world')}」refs 里的 {n} 不是人物")
     if E:
         return E, W
+    for p in bible.get("props", []):
+        used = [s for c in board.get("clips", []) if p["name"] in c.get("props", []) for s in c.get("shots", [])
+                if s.get("type") == "insert" or p["name"] in json.dumps(s.get("action", ""), ensure_ascii=False)]
+        if used and len(str(p.get("mechanism", ""))) < 6:
+            E.append(f"道具「{p['name']}」会被手操作，缺 mechanism：手怎么动 → 道具怎么响应 → 结果状态（crew/06 道具操作机制；不写会出现手在动、东西不动）")
     for clip in board.get("clips", []):
         tag = f"第{clip.get('n')}条"
         loc = clip.get("location")
@@ -147,6 +187,21 @@ def validate(bible, board, models=("seedance",)):
             E.append(f"{tag} 缺价值翻转 turn: {{\"from\": 开头的处境, \"to\": 结尾的处境}}，两头要相反（docs/20 第四节）")
         if not isinstance(sig.get("shot"), int) or not 1 <= sig["shot"] <= len(shots) or len(str(sig.get("why", ""))) < 6:
             E.append(f"{tag} 缺视听高光 signature: {{\"shot\": 第几镜, \"why\": 构图、光、运动、声音怎么同时发力}}（docs/20 第四节）")
+        if len(str(clip.get("tension", ""))) < 8:
+            E.append(f"{tag} 缺压力源 tension：谁想要什么、什么挡着、观众比角色多知道还是少知道什么（docs/20 第四节\"张力\"）")
+        durs = [s.get("dur", 0) for s in shots if s.get("dur")]
+        if len(durs) >= 3 and max(durs) < 1.5 * min(durs):
+            E.append(f"{tag} 镜头时长 {durs} 太平均，节奏四平八稳：高光镜头给足时长，之前用短镜头加速，最长至少是最短的 1.5 倍（docs/20 第四节）")
+        moving = [s for s in shots if s.get("move") or s.get("type") in ("track", "pov") or (s.get("cam") or {}).get("end")]
+        if shots and not moving and len(str(clip.get("stillness", ""))) < 6:
+            E.append(f"{tag} 整条都是固定机位：给转折那一镜一个有动机的 move（推近、横移揭示、手持），或写 stillness 说明为什么要静、静之后哪里爆发（docs/20 第四节）")
+        ranks = {shot_rank(s) for s in shots}
+        if len(shots) >= 3 and len(ranks) < 3:
+            W.append(f"{tag} 只用了 {len(ranks)} 种景别，每条至少三种（docs/20 第五节分镜师）")
+        for k in range(1, len(shots)):
+            a, b = shots[k - 1], shots[k]
+            if a.get("type") == b.get("type") and shot_rank(a) == shot_rank(b) and not b.get("move"):
+                E.append(f"{tag} 镜{k} 和镜{k + 1} 类型和景别都一样，像跳切：换景别或角度（docs/14 第三节）")
         if need_en and not clip.get("summary_en"):
             E.append(f"{tag} 缺 summary_en：这一条的英文一句话" + EN)
         total = sum(s.get("dur", 0) for s in shots)
@@ -159,6 +214,18 @@ def validate(bible, board, models=("seedance",)):
             if t not in TYPES:
                 E.append(f"{st} type 要是 {TYPES} 之一")
                 continue
+            mv = s.get("move")
+            if mv:
+                if mv.get("kind") not in MOVES:
+                    E.append(f"{st} move.kind 要是 {list(MOVES)} 之一")
+                elif mv.get("speed", "slow") not in SPEEDS:
+                    E.append(f"{st} move.speed 要是 {list(SPEEDS)} 之一")
+                if len(str(mv.get("why", ""))) < 4:
+                    E.append(f"{st} 运镜要写动机 move.why：跟视线、跟情绪，还是为了揭示什么；说不出动机就用固定机位（docs/20 第四节）")
+                if t in ("track", "pov") or s.get("cam"):
+                    E.append(f"{st} {t if not s.get('cam') else 'cam'} 镜头自带机位运动，不能再加 move")
+                if mv.get("speed") == "sudden" and s.get("dur", 0) < 2:
+                    E.append(f"{st} 突然的运镜单镜不短于 2 秒，模型才做得出来")
             if s.get("dur", 0) < 1.5:
                 E.append(f"{st} 时长 {s.get('dur')} 秒，短于 1.5 秒模型做不出来，并到相邻镜头")
             if s.get("size") and s["size"] not in SIZES:
@@ -217,6 +284,13 @@ def validate(bible, board, models=("seedance",)):
                     E.append(f"{st} mode=back 只用于过肩镜头的前景人物说话")
                 if len(acts) > 1:
                     E.append(f"{st} 对白镜头最多一个动作（现在 {len(acts)} 个），其余挪到别的镜头（第 1 条实拍教训）")
+                if not acts:
+                    E.append(f"{st} 对白镜头要先写一个手上的动作（剥橘子、拉袖子、摘耳机……），模型会把动作演成说话的自然停顿；"
+                             "没有动作的台词容易念得像背书（docs/20 台词对白、crew/23）")
+                if len(SEP.sub("", txt)) > 12 and not re.search(r"[，、…—？！?!,]", txt.rstrip("。.？！?!")):
+                    W.append(f"{st} 台词「{txt}」超过 12 个字中间没有停顿：用逗号、省略号、问号写出呼吸，或拆成半句 + 回问")
+                if need_en and line.get("delivery") and not line.get("delivery_en"):
+                    E.append(f"{st} 台词写了 delivery，缺 delivery_en" + EN)
             for a in acts:
                 a_txt = a.get("text", "") if isinstance(a, dict) else a
                 if CROWD_WORDS.search(a_txt) and not s.get("crowd"):
@@ -266,6 +340,7 @@ def items(bible, board):
     for c in bible["characters"]:
         must = f"MUST BE READABLE: {c['must_en']} PORTRAIT: {c.get('portrait_en', 'restrained expression, mouth closed.')}"
         push(c["name"], dict(tag=f"@{c['name']}", world="__people__", file=f"{c['name']}_三视图.png", type="人物三视图", rec=REC, deps="—",
+                             art=f"剪影识别点：{c['silhouette']}" if c.get("silhouette") else "",
                              brief_en=c["brief_en"], voice_en=c.get("voice_en", ""),
                              use=use(f"@{c['name']}"), lock=c["lock"],
                              en=f"Create a character reference sheet for a {film}: {c['brief_en']}", must=must,
@@ -288,11 +363,14 @@ def items(bible, board):
                                        duty=f"「{p['name']}」：只取外形、材质和状态；不继承灰底。"))
     for l in bible["locations"]:
         hv = l.get("human_view")
-        push("loc:" + l["name"], dict(tag=f"@loc_{l['name']}", world=l["world"], file=f"场景_{l['name']}.png", brief_en=l["en"],
+        anchors = "、".join(l.get("anchor", []))
+        art = f"锚点物：{anchors}；光逻辑：{l.get('light', '')}；时代：{l.get('era', '')}；使用痕迹：{l.get('wear', '')}" + (f"；画面对冲：{l['contrast']}" if l.get('contrast') else "")
+        push("loc:" + l["name"], dict(tag=f"@loc_{l['name']}", world=l["world"], file=f"场景_{l['name']}.png", brief_en=l["en"], art=art,
+                                      geo_note=f"「{l['name']}」美术：{art}。",
                                       type="人类视角机位" if hv else "场景主图", rec=REC, deps="—", use=use(f"@loc_{l['name']}"), lock=l["lock"],
                                       en=f"A location reference image for a {film}, no characters: {l['en']}",
                                       must=l["must_en"] + " The scene is completely uninhabited. Full-frame image with no black bars. No readable text or signs.",
-                                      check=l.get("check", []) + ["没有人", "没有黑边", "没有文字"],
+                                      check=l.get("check", []) + [f"锚点物都在：{anchors}", "光的方向和冷暖符合光逻辑", "没有人", "没有黑边", "没有文字"],
                                       duty=f"「{l['name']}」：只取空间结构、材质和光；不作首帧，不继承构图。"))
         if l.get("grid"):
             push("grid:" + l["name"], dict(tag=f"@loc_{l['name']}_grid", world=l["world"], file=f"场景_{l['name']}_宫格.png", type="场景宫格", rec=REC,
@@ -408,6 +486,34 @@ class Clip:
         return out
 
     def camera(self, s, t0):
+        cm = self._camera(s, t0)
+        mv = s.get("move")
+        if not mv or mv.get("kind") not in MOVES or len(cm["keys"]) > 1:
+            return cm
+        p, lk, kind = cm["keys"][0]["pos"], cm["look_at"], mv["kind"]
+        v = _v(p, lk)
+        L = math.hypot(v[0], v[1]) or 1.0
+        f, side = [v[0] / L, v[1] / L, 0.0], [-v[1] / L, v[0] / L, 0.0]
+        amt = float(mv.get("amount", 0.4))  # 推拉：走掉机位到主体距离的比例；横移 / 升降：米 = amount × 距离
+        if kind == "handheld":
+            cm["handheld"] = 0.015
+            return cm
+        if kind in ("push", "pull"):
+            d = L * amt * (1 if kind == "push" else -1)
+            end = [p[0] + f[0] * d, p[1] + f[1] * d, p[2]]
+        elif kind in ("truck_left", "truck_right"):
+            d = L * amt * (1 if kind == "truck_left" else -1)
+            end = [p[0] + side[0] * d, p[1] + side[1] * d, p[2]]
+        elif kind in ("rise", "drop"):
+            end = [p[0], p[1], max(0.3, p[2] + L * amt * (1 if kind == "rise" else -1))]
+        else:
+            ang = math.radians(35 * amt / 0.4) * (1 if kind == "orbit_left" else -1)
+            dx, dy = p[0] - lk[0], p[1] - lk[1]
+            end = [lk[0] + dx * math.cos(ang) - dy * math.sin(ang), lk[1] + dx * math.sin(ang) + dy * math.cos(ang), p[2]]
+        cm["keys"].append({"t": t0 + s["dur"], "pos": [round(x, 4) for x in end]})
+        return cm
+
+    def _camera(self, s, t0):
         t, size = s["type"], s.get("size")
         if s.get("cam"):  # 逃生口：直接给机位
             c = s["cam"]
@@ -461,13 +567,16 @@ class Clip:
             b.append(f"{world}群演（{ids} 号）{s['crowd'].get('doing', '')}")
         head = "画面里：" + "、".join(b) + "。"
         deg = K.LENS_DEG.get(lens, f"{lens}mm")
-        parts = [f"{deg}，{s.get('size', '') + '，' if s.get('size') else ''}{MOVE[t]}"]
+        mv = s.get("move")
+        mtxt = MOVE[t] if not mv else (move_text(mv) if t in ("wide", "single") else f"{MOVE[t]}，{move_text(mv)}")
+        parts = [f"{deg}，{s.get('size', '') + '，' if s.get('size') else ''}{mtxt}"]
         acts = s.get("action", [])
         for a in (acts if isinstance(acts, list) else [acts]):
             parts.append(f"第 {a['at']} 秒，{a['text']}" if isinstance(a, dict) and "at" in a else (a["text"] if isinstance(a, dict) else a))
         if s.get("line"):
             ln = s["line"]
-            say = {"on": f"{ln['who']}说：", "back": f"背对镜头的{ln['who']}说：", "off": f"画外，{ln['who']}的声音："}[ln.get("mode", "on")]
+            how = f"（{ln['delivery']}）" if ln.get("delivery") else ""
+            say = {"on": f"{ln['who']}{how}说：", "back": f"背对镜头的{ln['who']}{how}说：", "off": f"画外，{ln['who']}的声音{how}："}[ln.get("mode", "on")]
             parts.append(f"{say}{{{ln['text']}}}")
         snd = " ".join(f"<{x['text']}>" for x in s.get("sound", []))
         out = head + "；".join(parts) + (f"；{snd}" if snd else "")
@@ -491,7 +600,7 @@ class Clip:
                 object=s.get("object"), object_en=s.get("object_en"), hand=s.get("hand"), hand_en=s.get("hand_en"), view=s.get("view"),
                 action=[{"at": a.get("at"), "zh": a.get("text"), "en": a.get("en")} if isinstance(a, dict) else {"zh": a} for a in acts],
                 line=s.get("line"), sound=[{"zh": x.get("text"), "en": x.get("en"), "source": x.get("source")} for x in s.get("sound", []) if isinstance(x, dict)],
-                crowd=s.get("crowd")).items() if v}  # 结构化镜头：可灵 / 海螺 / 万相的专用编译器用
+                crowd=s.get("crowd"), move=({"kind": s["move"]["kind"], "en": move_text(s["move"], "en")} if s.get("move") and s["move"].get("kind") in MOVES else None)).items() if v}  # 结构化镜头：可灵 / 海螺 / 万相的专用编译器用
             shots.append(sh)
             t0 += s["dur"]
         c = self.c
@@ -514,7 +623,8 @@ class Clip:
                     tags=tags, count=f"画面中始终只有 {len(cast)} 个有名字的角色：{brief}。{crowd_note}每一镜画面里有谁，以时间轴里\"画面里\"那一句为准。",
                     context=c.get("context", c.get("summary", "")), extra_chars=[], voices=speakers,
                     sfx=" ".join(f"<{x['text']}>" for s in c["shots"] for x in s.get("sound", [])) or "无",
-                    constraint=axis_txt + c.get("constraint", ""), axis={"a": ots["fg"], "b": ots["subject"]} if ots else None,
+                    constraint=axis_txt + c.get("constraint", "") + "".join(
+                        f"道具操作（{p['name']}）：{p['mechanism']}。" for p in self.b.get("props", []) if p["name"] in c.get("props", []) and p.get("mechanism")), axis={"a": ots["fg"], "b": ots["subject"]} if ots else None,
                     people=self.people(), shots=shots, extra_boxes=[], fail=c.get("fail", "人物脸和服装与参考图不一致；画面出现文字。"),
                     risk=c.get("risk", "—"), splice=c.get("splice", "—"), summary_en=c.get("summary_en"),
                     style_en=self.style_en)
@@ -529,6 +639,43 @@ def build_assets(proj):
     its = items(bible, board)
     K.write_asset_doc(proj, bible["title"], its, en, note, "出图顺序：人物三视图 → 状态变体 → 道具 → 场景 → 宫格 → 群像。")
     return len(its), W
+
+
+def build_stress(proj):
+    """角色压力测试（crew/07）：每个主角 3 张——本片光下 3/4 中近景、暗处全身远景、和另一个主角同框。
+    写 交付/01b-角色压力测试.md；前面照抄主角三视图条目（已出好的图会被跳过，当作参考图）。"""
+    bible, board = load(proj)
+    en, _, _ = style_map(bible)
+    film = bible["film"]
+    sheets = [it for it in items(bible, board) if it["type"] == "人物三视图"]
+    locs = bible["locations"]
+    out = [dict(it) for it in sheets]
+    idx = {it["tag"]: i + 1 for i, it in enumerate(out)}
+    for k, c in enumerate(bible["characters"]):
+        me = idx[f"@{c['name']}"]
+        la, lb = locs[k % len(locs)], locs[(k + 1) % len(locs)]
+        partner = bible["characters"][(k + 1) % len(bible["characters"])] if len(bible["characters"]) > 1 else None
+        same = "Image 1 is the approved character sheet: render this exact person (face from the large portrait on the right), " \
+               "same face, hair, costume and body; clearly an adult; no text anywhere."
+        tests = [("3/4 中近景 · " + la["name"] + "的光", f"A cinematic photoreal still of a {film}: a three-quarter medium close-up of {c['brief_en']} "
+                  f"inside {la['en']}", f"{same} Lit by the scene's own light: {la.get('light', '')}.", la["world"], str(me)),
+                 ("暗处全身远景 · " + lb["name"], f"A cinematic photoreal still of a {film}: a wide full-body shot of {c['brief_en']} standing in a dim corner of {lb['en']}",
+                  f"{same} Low-key light; the person is small in frame but still recognisable by silhouette: {c.get('silhouette', '')}.", lb["world"], str(me))]
+        if partner:
+            tests.append(("双人同框 · " + partner["name"], f"A cinematic photoreal still of a {film}: a medium two-shot of {c['brief_en']} and {partner['brief_en']} "
+                          f"facing each other inside {la['en']}", f"Images 1 and 2 are the approved character sheets of the two people; keep each face, "
+                          "hair and costume exactly, never swap or blend them; both clearly adults; no text anywhere.", la["world"],
+                          f"{me}、{idx['@' + partner['name']]}"))
+        for j, (name, en_txt, must, world, deps) in enumerate(tests, 1):
+            out.append(dict(tag=f"@压测_{c['name']}_{j}", world=world, file=f"压测_{c['name']}_{j}.png", type="压力测试", rec=REC, deps=deps,
+                            use=name, lock=c["lock"], en=en_txt, must=must,
+                            check=["脸和三视图大头像是同一个人", "发型、服装、剪影识别点都对", "皮肤自然、不像 AI 渲染", "没有文字"],
+                            duty="只用于定稿前检查，不进视频"))
+    path = os.path.join(proj, "交付")
+    K.write_asset_doc(proj, bible["title"] + " · 角色压力测试", out, en, "与资产提示词相同的风格配方", "前几行是已定稿的三视图（会被跳过，只作参考图）。")
+    os.replace(os.path.join(path, "01-资产提示词.md"), os.path.join(path, "01b-角色压力测试.md"))
+    build_assets(proj)  # 恢复正式资产文档
+    return len(out) - len(sheets), []
 
 
 def build_specs(proj):
@@ -561,7 +708,7 @@ def build_specs(proj):
 
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[1] not in ("check", "assets", "specs"):
+    if len(sys.argv) != 3 or sys.argv[1] not in ("check", "assets", "specs", "stress"):
         sys.exit(__doc__)
     proj = os.path.abspath(sys.argv[2])
     try:
@@ -573,7 +720,7 @@ def main():
                 print("ERROR", e)
             print("通过" if not E else f"{len(E)} 处错误")
             sys.exit(1 if E else 0)
-        n, W = build_assets(proj) if sys.argv[1] == "assets" else build_specs(proj)
+        n, W = {"assets": build_assets, "specs": build_specs, "stress": build_stress}[sys.argv[1]](proj)
         for w in W:
             print("WARN ", w)
         print(f"完成：{n}")

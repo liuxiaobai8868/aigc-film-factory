@@ -79,8 +79,9 @@ def write_asset_doc(project_root, title, items, style, style_note, order_note=""
         locked = f"LOCKED 描述锁 (verbatim)：\n{it['lock']}"
         mid = f"\n\n{SHEET}" if it["type"] == "人物三视图" else ""
         st = style[it["world"]]
-        text = f"{it['en']}\n\n{locked}{mid}\n\n{it['must']}\n\nSTYLE: {st}"
-        banana = f"A {st}. {it['en']} {it['must']}"
+        art = f"\n\n美术要求（必须体现）：{it['art']}" if it.get("art") else ""
+        text = f"{it['en']}\n\n{locked}{art}{mid}\n\n{it['must']}\n\nSTYLE: {st}"
+        banana = f"A {st}. {it['en']} {it['must']}" + (f" 美术要求：{it['art']}" if it.get("art") else "")
         parts = [f"### {n}｜{it['tag']}｜{it['type']}", "", f"- **用途**：{it['use']}", f"- **先上传**：{it['deps']}",
                  f"- **推荐模型**：{it['rec']}", "- **提示词**：", "", _block("text", text), "", _block("banana", banana),
                  "", "- **出图后检查**：" + "；".join(it["check"]) + "。",
@@ -216,6 +217,8 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
             assets.append(a)
             if t.startswith("@loc_") and it["lock"] not in geo:  # 宫格和主图共用一条空间锁，只写一次
                 geo.append(it["lock"])
+                if it.get("geo_note") and it["geo_note"] not in geo:  # 光逻辑、锚点物、时代锁：进视频提示词
+                    geo.append(it["geo_note"])
             if kind == "character":
                 chars.append(it["lock"])
         spec = {"schema": "aigc-shot-spec/1", "project": project, "clip": n, "title": c["title"], "duration": c["dur"], "ratio": "16:9",

@@ -6,7 +6,7 @@ subject_definitions:
 <Video 1>: grey whitebox previs of this clip. It defines only the camera path, cut points, framing, blocking and the order of events; its grey boxes, colored proxy cylinders and neutral light are not carried over. Proxies: yellow cylinder = <Subject 1>; blue cylinder = <Subject 2>; grey boxes = set and props.
 
 summary:
-[reference generation] A 4-second live-action clip. At three in the morning, a regular customer comes into a quiet convenience store for his usual pack of cigarettes. This is seconds 12–16 of clip 1, generated on its own and joined in the edit.
+[reference generation] A 7.5-second live-action clip. At three in the morning, a regular customer comes into a quiet convenience store for his usual pack of cigarettes. This is seconds 8–15.5 of clip 1, generated on its own and joined in the edit.
 
 retention_analysis:
 <Subject 1>: fully_preserved — face, hair, costume and body shape
@@ -18,10 +18,11 @@ retention_analysis:
 detailed_description:
 Live-action cinematic footage. Setting look: cinematic 35mm footage; a warm amber practical light source on the subject against a cold blue glow in the background; strong warm-cold color separation; volumetric haze catching the light; shallow depth of field; deep low-key shadows; soft glow around highlights; clean, noise-free image. People look: cinematic footage shot on a 35mm lens; dusk blue-grey ambient light with a faint warm orange rim from behind; low contrast; long-lens compression and shallow depth of field; natural, realistic skin with subtle texture and a soft natural sheen, not retouched and not over-sharpened; restrained, unposed expression; clean, noise-free image.
 Every shot change is a hard cut with no fades or dissolves; each shot keeps one camera position and one main camera move. There are no subtitles and no on-screen text.
-[Shot 1] Top-down insert close-up on a 50 mm lens, static camera, matching 0–4 s of <Video 1>. In frame: the clerk's right hand (a young woman's hand, worn dark-blue sleeve cuff) and the wooden countertop. It takes a plain white cigarette pack from under the counter and sets it on the countertop.
+[Shot 1] Medium over-the-shoulder shot on a 50 mm lens, static camera, matching 0–4.5 s of <Video 1>. In frame: <Subject 1>'s blurred shoulder in the foreground; <Subject 2>. At 00:01.000, the glass door swings open and the older man walks in with rain-wet shoulders. <Subject 2> (S1), an older man with a low, hoarse voice who speaks briefly, says: <d>[Chinese] 老样子。</d> Only the speaker's lips move.
+[Shot 2] At 00:04.500, hard cut to a top-down insert close-up on a 50 mm lens, static camera, matching 4.5–7.5 s of <Video 1>. In frame: the clerk's right hand (a young woman's hand, worn dark-blue sleeve cuff) and the wooden countertop. It takes a plain white cigarette pack from under the counter and sets it on the countertop.
 
 overall_soundscape:
-Quiet room tone with the natural sounds of the actions on screen.
+Throughout the clip: a door chime.
 
 non_diegetic_music:
 N/A

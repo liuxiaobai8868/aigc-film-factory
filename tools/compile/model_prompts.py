@@ -118,7 +118,8 @@ def hailuo(spec, part, short_duty_fn):
                         f"{st['crowd'].get('doing_en', '')}".rstrip(", "))
         if typ == "pov":
             seen.insert(0, f"what {label.get(st['subject'], st['subject'])} sees")
-        text = f"{head} {frame} on a {lens}, {MOVE_EN[typ]}, matching {fmt(a)}–{fmt(b)} s of <Video 1>. In frame: {'; '.join(seen)}."
+        mv_en = st["move"]["en"] if st.get("move") else MOVE_EN[typ]
+        text = f"{head} {frame} on a {lens}, {mv_en}, matching {fmt(a)}–{fmt(b)} s of <Video 1>. In frame: {'; '.join(seen)}."
         for act in st.get("action", []):
             en = act.get("en") or act.get("zh")
             text += f" At {mmss(a + act['at'])}, {en}." if act.get("at") is not None else f" {en[0].upper() + en[1:]}."
@@ -132,7 +133,8 @@ def hailuo(spec, part, short_duty_fn):
             mode = ln.get("mode", "on")
             verb = {"on": "says", "back": "seen from behind in the foreground, says",
                     "off": "says in an off-screen voiceover while every on-screen speaker's lips remain closed"}[mode]
-            text += f" {ident} {verb}: <d>[Chinese] {ln['text']}</d> Only the speaker's lips move."
+            dl = f", {ln['delivery_en']}" if ln.get("delivery_en") else ""
+            text += f" {ident} {verb}{dl}: <d>[Chinese] {ln['text']}</d> Only the speaker's lips move."
         for sd in st.get("sound", []):
             if sd.get("en") and sd["en"] not in sounds:
                 sounds.append(sd["en"])

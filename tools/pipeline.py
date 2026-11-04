@@ -11,7 +11,7 @@
   python3 tools/pipeline.py selftest examples/样例-便利店     自测：不花钱（占位图），从样例数据跑到投喂包，和标准产物逐字比对
   python3 tools/pipeline.py qc <项目目录> <第N条> <视频文件>   审片：切点、时长、分段音量、台词听写，写 logs/审片_第N条.md
 
-阶段（顺序固定）：confirm → assets → images → asset_review → specs → previs → check_spec → geometry → framesheets
+阶段（顺序固定）：confirm → assets → images → asset_review → stress（可选）→ specs → previs → check_spec → geometry → framesheets
 → previs_review → compile → report。规则和每一步的含义见 docs/18-自动化流水线.md。
 状态写在 <项目>/production.json 的 "pipeline" 和 "reviews" 里；产物与日志写在 <项目>/logs/。
 """
@@ -28,7 +28,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
 PY = sys.executable
-STAGES = ["confirm", "assets", "images", "asset_review", "specs", "previs", "check_spec", "geometry", "framesheets",
+STAGES = ["confirm", "assets", "images", "asset_review", "stress", "specs", "previs", "check_spec", "geometry", "framesheets",
           "previs_review", "compile", "report"]
 sys.path.insert(0, TOOLS)
 
@@ -221,6 +221,49 @@ def st_asset_review(proj, d):
     mark(d, "asset_review")
 
 
+def st_stress(proj, d):
+    """可选：角色压力测试（production.json 里 "stress_test": true 才做；crew/07，定稿前看真人感和一致性）。"""
+    if not d.get("stress_test") or not json_mode(proj):
+        mark(d, "stress", skipped=True)
+        return
+    run([PY, "-I", os.path.join(TOOLS, "storyboard.py"), "stress", proj])
+    import image_gen
+    doc = os.path.join(proj, "交付", "01b-角色压力测试.md")
+    table = image_gen.parse_doc(doc)
+    out = os.path.join(proj, "交付", "资产图")
+    tests = {n: it for n, it in table.items() if it["type"] == "压力测试"}
+    missing = [n for n, it in tests.items() if not os.path.exists(os.path.join(out, it["file"]))]
+    b = d["budget"]["images"]
+    if missing and not offline(d):
+        if b["approved"] - b["used"] < len(missing):
+            raise Stop(f"角色压力测试要出 {len(missing)} 张，出图预算不够",
+                       f"告诉用户压力测试要出 {len(missing)} 张（每个主角 3 张，看侧脸、暗处、同框时还像不像真人、像不像同一个人）；同意后 `pipeline.py approve <项目> images {len(missing)}`")
+        r = run([PY, os.path.join(TOOLS, "image_gen.py"), doc, "--out", out, "--only", ",".join(map(str, missing))], check=False)
+        open(os.path.join(proj, "logs", f"出图_{datetime.date.today()}.txt"), "a", encoding="utf-8").write(r.stdout + r.stderr)
+        b["used"] += sum(1 for n in missing if os.path.exists(os.path.join(out, tests[n]["file"])))
+    pend, fix = [], []
+    for n, it in tests.items():
+        p = os.path.join(out, it["file"])
+        if not os.path.exists(p):
+            if offline(d):
+                continue
+            raise Stop(f"压力测试图 {it['file']} 没出来", "看 logs/出图_*.txt，修好后重跑 run")
+        k, h = "压测:" + it["file"], sha(p)
+        if d["reviews"].get(k, {}).get("hash") != h:
+            d["reviews"][k] = {"status": "pass" if offline(d) else "待目检", "hash": h}
+        st = d["reviews"][k]["status"]
+        (pend if st == "待目检" else fix if st == "fix" else []).append((n, it))
+    if pend:
+        contact_sheet([os.path.join(out, it["file"]) for _, it in pend], [f"{it['tag']} {it['use']}" for _, it in pend],
+                      os.path.join(proj, "logs", "待目检_压力测试.jpg"))
+        raise Stop("角色压力测试待目检：" + "、".join(it["tag"] for _, it in pend),
+                   "打开 logs/待目检_压力测试.jpg 和原图：同一个人吗？侧脸、暗处、同框时还像真人吗？剪影认得出吗？合格 `review <项目> 压测:<文件名> pass`；"
+                   "不合格 `review … fix <原因>`，改人物描述锁或重出三视图，再删掉对应压测图重跑")
+    if fix:
+        raise Stop("压力测试有 fix：" + "、".join(it["tag"] for _, it in fix), "改人物描述锁 / 三视图（必要时 redo 三视图），删掉对应压测图后重跑 run")
+    mark(d, "stress", tests=len(tests))
+
+
 def st_specs(proj, d):
     build(proj, "specs")
     if not clips(proj):
@@ -388,7 +431,7 @@ def cmd_run(proj, until=None):
 
 
 def _golden_files(proj):
-    out = ["交付/01-资产提示词.md"]
+    out = ["交付/01-资产提示词.md"] + (["交付/01b-角色压力测试.md"] if os.path.exists(os.path.join(proj, "交付", "01b-角色压力测试.md")) else [])
     out += [os.path.join("交付", "规格单", f) for f in sorted(os.listdir(os.path.join(proj, "交付", "规格单")))]
     for root, _, files in sorted(os.walk(os.path.join(proj, "交付", "投喂包"))):
         out += [os.path.relpath(os.path.join(root, f), proj) for f in sorted(files) if f in ("提示词.txt", "界面参数.txt")]
@@ -402,7 +445,7 @@ def cmd_selftest(example, update=False):
     proj = os.path.join(tmp, os.path.basename(example))
     shutil.copytree(example, proj, ignore=shutil.ignore_patterns("标准产物", "production.json", "交付", "logs", "预演规格"))
     d = load(proj)
-    d.update(selftest=True, project=os.path.basename(example), video_models=["seedance", "kling", "hailuo", "wan"])
+    d.update(selftest=True, stress_test=True, project=os.path.basename(example), video_models=["seedance", "kling", "hailuo", "wan"])
     d["confirm"] = {"story": "selftest", "script": "selftest"}
     save(proj, d)
     print(f"自测目录：{proj}")

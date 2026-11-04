@@ -25,7 +25,8 @@
     "电子表在左手"
    ],
    "voice": "声音轻，有点哑，语速慢。",
-   "voice_en": "a young woman with a light, slightly husky voice who speaks slowly"
+   "voice_en": "a young woman with a light, slightly husky voice who speaks slowly",
+   "silhouette": "齐肩黑发别在耳后、偏瘦的肩、深蓝工装外套"
   },
   {
    "name": "老周",
@@ -40,7 +41,8 @@
     "花白寸头"
    ],
    "voice": "声音低，沙哑，话少。",
-   "voice_en": "an older man with a low, hoarse voice who speaks briefly"
+   "voice_en": "an older man with a low, hoarse voice who speaks briefly",
+   "silhouette": "微胖的圆肩、花白寸头、肩膀湿成深色的灰夹克"
   }
  ],
  "props": [
@@ -51,7 +53,8 @@
    "must_en": "Exactly one pack. Plain white, no printing at all.",
    "check": [
     "烟盒上没有字"
-   ]
+   ],
+   "mechanism": "手从柜台下摸出烟盒 → 烟盒平放在台面上，轻轻一声 → 烟盒停在台面靠近顾客的一侧，不滑动"
   }
  ],
  "locations": [
@@ -218,7 +221,16 @@
       "lens": 24
      }
     }
-   }
+   },
+   "anchor": [
+    "收银台上的暖黄小台灯",
+    "玻璃门和门上的风铃",
+    "三排货架"
+   ],
+   "light": "主光是收银台上的暖黄台灯（约 3000K），照亮阿青和台面一米内；辅光是头顶冷白灯管（约 6500K）照货架；门外是雨夜街灯的冷蓝反光",
+   "era": "2010 年代中国小城；可以出现：塑料筐、手写价签、旧电子秤；不能出现：自助收银机、电子价签、大屏广告",
+   "wear": "台面边缘被手磨亮，地上有雨天带进来的湿脚印，货架角贴着卷边的胶带",
+   "contrast": "冷白灯管压满整店，只有收银台一圈暖黄；店大、人小，门外黑、店里亮"
   }
  ],
  "crowds": [
