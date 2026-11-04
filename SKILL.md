@@ -1,6 +1,6 @@
 ---
 name: aigc-film-factory
-description: AIGC 制片工厂 3.4——从一句创意或剧本到可直接投喂的视频提示词与资产出图提示词的工业级流程：剧本确认后自动化流水线跑完资产、出图、白模、零抽卡闸门，一份镜头规格单编译到 Seedance 2.5 / 可灵 4.0 / 海螺 H3 / 万相 3.0 任一模型；26 个岗位视角、顶级标准与张力机检。交付：《资产提示词》（每张图标推荐出图模型）+ 每条一份投喂包（白模预演版，参考图接线、提示词、界面参数）。用户说"做一部 AI 短片/短剧/漫剧/广告""出故事创意""写剧本""出资产提示词/三视图""写 Seedance 提示词""白模预演""出图""~start"时使用。
+description: AIGC 制片工厂 3.5——从一句创意或剧本到可直接投喂的视频提示词与资产出图提示词的工业级流程：剧本确认后自动化流水线跑完资产、出图、白模、零抽卡闸门，一份镜头规格单编译到 Seedance 2.5 / 可灵 4.0 / 海螺 H3 / 万相 3.0 任一模型；26 个岗位视角、顶级标准与张力机检。交付：《资产提示词》（每张图标推荐出图模型）+ 每条一份投喂包（白模预演版，参考图接线、提示词、界面参数）。用户说"做一部 AI 短片/短剧/漫剧/广告""出故事创意""写剧本""出资产提示词/三视图""写 Seedance 提示词""白模预演""出图""~start"时使用。
 ---
 
 # AIGC 制片工厂
@@ -65,6 +65,7 @@ description: AIGC 制片工厂 3.4——从一句创意或剧本到可直接投�
 | `python3 tools/pipeline.py selftest examples/样例-便利店` | 自测：离线从样例跑到投喂包，和标准产物逐字比对 |
 | `python3 tools/storyboard.py check <项目>` | 校验 设定.json / 分镜.json，ERROR 附改法 |
 | `python3 tools/pipeline.py qc <项目> 第N条 <视频>` | 审片机检：时长、切点、分段音量、台词听写 |
+| `python3 tools/pipeline.py splice <项目> 第N条 <视频>` | 截这条的尾帧，下次 run 接进下一条的投喂包（同一场连续的戏） |
 | `python3 tools/pipeline.py status\|run <项目>` | **自动化流水线**（docs/18）：资产 → 出图 → 目检 → 规格 → 自检 → 白模 → 几何 → 拼图 → 目检 → 投喂包，照 NEXT 做 |
 | `python3 tools/previs/render_previs.py <规格.json> --out <目录> [--stills-only]` | 白模预演视频 + 关键帧拼图 |
 | `python3 -I tools/compile/check_spec.py <规格单或目录>` | 零抽卡闸门 · 规格自检 |

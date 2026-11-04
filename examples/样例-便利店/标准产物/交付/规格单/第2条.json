@@ -180,5 +180,9 @@
  },
  "style_en": "Setting look: cinematic 35mm footage; a warm amber practical light source on the subject against a cold blue glow in the background; strong warm-cold color separation; volumetric haze catching the light; shallow depth of field; deep low-key shadows; soft glow around highlights; clean, noise-free image. People look: cinematic footage shot on a 35mm lens; dusk blue-grey ambient light with a faint warm orange rim from behind; low contrast; long-lens compression and shallow depth of field; natural, realistic skin with subtle texture and a soft natural sheen, not retouched and not over-sharpened; restrained, unposed expression; clean, noise-free image.",
  "summary_en": "The customer pays and leaves; the people sheltering from the rain outside drift away.",
+ "splice_in": {
+  "file": "衔接/第1条_尾帧.png",
+  "from": "1"
+ },
  "music_en": "N/A"
 }

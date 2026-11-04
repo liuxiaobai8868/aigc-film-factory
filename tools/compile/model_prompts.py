@@ -63,6 +63,11 @@ def hailuo(spec, part, short_duty_fn):
                         "(row 1 left to right = 1–7, row 2 = 8–14); only the numbered people named below appear, each at most once, "
                         "and none of them is a main character. The white backdrop and the lineup layout are not carried over.")
             keep.append(f"{lab}: attribute_transfer — faces, costumes and props of the numbered extras")
+        elif a["kind"] == "tail":
+            defs.append(f"{lab}: the last frame of the previous clip, uploaded image {i}. It carries over only where each person stands, "
+                        "which way they face, their pose, the state of their clothes, and the light, so this clip continues from it; "
+                        "it is not this clip's first frame and its image quality is not copied.")
+            keep.append(f"{lab}: partially_preserved — positions, facing, pose, costume state and light")
         elif a["kind"] == "prop":
             defs.append(f"{lab}: {a['name']} — {en} Shape and material come from uploaded reference image {i}; the grey backdrop is not carried over.")
             keep.append(f"{lab}: fully_preserved — shape, material and state")
@@ -123,6 +128,9 @@ def hailuo(spec, part, short_duty_fn):
         for act in st.get("action", []):
             en = act.get("en") or act.get("zh")
             text += f" At {mmss(a + act['at'])}, {en}." if act.get("at") is not None else f" {en[0].upper() + en[1:]}."
+        for key in ("hit_en", "vfx_en"):  # 武戏受力因果、特效七要素
+            if st.get(key):
+                text += f" {st[key][0].upper() + st[key][1:].rstrip('.')}."
         ln = st.get("line")
         if ln:
             who = label.get(ln["who"], ln["who"])

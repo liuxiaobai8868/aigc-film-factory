@@ -60,6 +60,22 @@ ANCHOR = "人物都是正常的人体结构：两只手各五根手指。"
 SAVIOR = re.compile(r"金手指|系统(发|奖|签到)|签到|认亲|亲孙子|赘婿|战神|龙王|跪地求|求复合|豪门|一夜暴富|神豪|重生复仇|打脸")  # docs/20 第一节：等救主结构
 CORE_KEYS = {"want": "主角想要什么", "need": "他真正需要什么", "choice": "关键时刻他自己做的选择", "cost": "这个选择让他失去什么",
              "image": "能说出主题的那个画面"}
+ACTION_RE = re.compile(r"打斗|出拳|挥拳|一拳|踢向|踢中|飞踢|挥刀|砍向|刺向|格挡|摔倒|扑倒|撞(上|向|飞|倒)|躲闪|翻滚|扭打|掐住|推倒|追赶|追逐|搏斗")  # 武戏：要写受力因果 hit
+VFX_RE = re.compile(r"爆炸|火焰|魔法|法术|能量|光束|光柱|变身|闪电|结界|传送|粒子|发光|光环|符文|召唤")  # 特效：要写七要素 vfx
+HIT_KEYS = {"support": "支撑（脚踩在哪、重心在哪）", "force": "发力（从哪发力、朝哪）", "contact": "接触（打在哪、碰到什么）",
+            "reaction": "受力（被打的一方怎么动）", "result": "结果（停在什么状态）"}
+VFX_KEYS = {"source": "源点", "direction": "方向", "scale": "尺度（和人比多大）", "speed": "速度", "medium": "介质反馈（空气、水、尘土怎么动）",
+            "light": "环境照明（照亮了哪里、什么颜色）", "decay": "衰减与残留"}
+
+
+def end_mark(cv):
+    return cv["path"][-1]["at"] if "path" in cv else cv.get("at")
+
+
+def start_mark(cv):
+    return cv["path"][0]["at"] if "path" in cv else cv.get("at")
+
+
 CROWD_WORDS = re.compile(r"路人|人群|群众|顾客们|村民|行人|正式工们|士兵们|客人们|观众")
 HAND_WORDS = re.compile(r"手|拇指|食指|指尖|掌心")
 SEP = re.compile(r"[，。！？、…\s\.,!?—~～「」“”\"'（）()]")
@@ -189,6 +205,23 @@ def validate(bible, board, models=("seedance",)):
             E.append(f"{tag} 缺视听高光 signature: {{\"shot\": 第几镜, \"why\": 构图、光、运动、声音怎么同时发力}}（docs/20 第四节）")
         if len(str(clip.get("tension", ""))) < 8:
             E.append(f"{tag} 缺压力源 tension：谁想要什么、什么挡着、观众比角色多知道还是少知道什么（docs/20 第四节\"张力\"）")
+        en_ = clip.get("energy") or {}
+        if not all(isinstance(en_.get(k), int) and 1 <= en_[k] <= 5 for k in ("in", "out")):
+            E.append(f"{tag} 缺能量 energy: {{\"in\": 1–5, \"out\": 1–5}}：这一条开头和结尾的情绪强度，用来排全片曲线（docs/20 第四节\"张力\"）")
+        speakers = []
+        for s in shots:
+            w = (s.get("line") or {}).get("who")
+            if w and w not in speakers:
+                speakers.append(w)
+        if len(speakers) >= 2:
+            dr = clip.get("drama") or {}
+            k = dr.get("shift")
+            if len(str(dr.get("a", ""))) < 4 or len(str(dr.get("b", ""))) < 4 or not isinstance(k, int):
+                E.append(f"{tag} 有 {len(speakers)} 个人说话，是对手戏，要写 drama: {{\"a\": 一方想要什么, \"b\": 另一方想要什么, \"shift\": 优势易手那句台词在第几镜}}（crew/22 文戏导演）")
+            elif not 1 <= k <= len(shots) or not shots[k - 1].get("line"):
+                E.append(f"{tag} drama.shift={k} 要指向一个有台词的镜头")
+            elif shots[k - 1].get("type") == "wide":
+                E.append(f"{tag} drama.shift 那一镜是全景：优势易手的那句话要给最好的镜头（近景、过肩或推近），不给全景（crew/22）")
         durs = [s.get("dur", 0) for s in shots if s.get("dur")]
         if len(durs) >= 3 and max(durs) < 1.5 * min(durs):
             E.append(f"{tag} 镜头时长 {durs} 太平均，节奏四平八稳：高光镜头给足时长，之前用短镜头加速，最长至少是最短的 1.5 倍（docs/20 第四节）")
@@ -244,6 +277,9 @@ def validate(bible, board, models=("seedance",)):
                     E.append(f"{st} 过肩要写 fg（越过谁的肩膀）")
                 else:
                     pairs.add(frozenset((s["fg"], s.get("subject"))))
+                    a_, b_ = cast.get(s["fg"]), cast.get(s.get("subject"))
+                    if a_ and b_ and "path" not in a_ and "path" not in b_ and a_.get("at") == b_.get("at"):
+                        E.append(f"{st} 过肩的「{s['fg']}」和「{s.get('subject')}」站在同一个站位「{a_.get('at')}」，算不出机位：分开站")
             if t == "wide" and s.get("view") and s["view"] not in locs[loc]["stage"].get("views", {}):
                 E.append(f"{st} view「{s['view']}」不在场景 stage.views 里")
             if t == "pov" and not s.get("look"):
@@ -291,6 +327,16 @@ def validate(bible, board, models=("seedance",)):
                     W.append(f"{st} 台词「{txt}」超过 12 个字中间没有停顿：用逗号、省略号、问号写出呼吸，或拆成半句 + 回问")
                 if need_en and line.get("delivery") and not line.get("delivery_en"):
                     E.append(f"{st} 台词写了 delivery，缺 delivery_en" + EN)
+            a_all = " ".join(a.get("text", "") if isinstance(a, dict) else a for a in acts)
+            for key, rx, keys, who in (("hit", ACTION_RE, HIT_KEYS, "武戏导演 crew/17：逐击五步因果"), ("vfx", VFX_RE, VFX_KEYS, "VFX 导演 crew/18：特效七要素")):
+                m = rx.search(a_all)
+                if m or s.get(key):
+                    obj = s.get(key) or {}
+                    miss = [zh for k2, zh in keys.items() if len(str(obj.get(k2, ""))) < 2]
+                    if miss:
+                        E.append(f"{st} 动作里有「{m.group(0) if m else key}」，要写 {key}：{'、'.join(miss)}（{who}；不写模型会做成没有因果的乱动）")
+                    elif need_en and not obj.get("en"):
+                        E.append(f"{st} {key} 缺 en：一句英文" + EN)
             for a in acts:
                 a_txt = a.get("text", "") if isinstance(a, dict) else a
                 if CROWD_WORDS.search(a_txt) and not s.get("crowd"):
@@ -308,6 +354,30 @@ def validate(bible, board, models=("seedance",)):
                     W.append(f"{st} 声音「{snd['text']}」的声源「{snd['source']}」不在画里，模型可能不出声")
         if len(pairs) > 1 and not clip.get("allow_axis_change"):
             E.append(f"{tag} 过肩用了 {len(pairs)} 组人物，轴线会乱；一条里只拍一组对话，或写 allow_axis_change: true 并在镜头里交代换轴")
+    clips_ = board.get("clips", [])
+    ens = [c.get("energy") or {} for c in clips_]
+    vals = [e[k] for e in ens for k in ("in", "out") if isinstance(e.get(k), int)]
+    if len(clips_) >= 2 and vals:
+        if max(vals) < 4:
+            E.append(f"全片能量最高只有 {max(vals)}：至少有一条到 4 以上，全片要有一个高点（docs/20 第四节\"张力\"）")
+        if len(set(vals)) < 3:
+            E.append(f"全片能量只有 {sorted(set(vals))} 这几档：曲线太平，要有起伏（压 → 升 → 爆 → 落）")
+        outs = [e.get("out") for e in ens if isinstance(e.get("out"), int)]
+        if len(outs) >= 3 and max(outs) <= 2:
+            W.append("每一条都低能量收尾：观众没有理由看下一条，至少一条结尾停在高处或悬念上")
+    if len(clips_) >= 3:
+        avg = lambda c: sum(s.get("dur", 0) for s in c.get("shots", [])) / max(1, len(c.get("shots", [])))  # noqa: E731
+        film = sum(avg(c) for c in clips_) / len(clips_)
+        if not any(avg(c) <= 0.75 * film for c in clips_):
+            W.append(f"全片没有加速段：每条平均镜长都接近 {film:.1f} 秒，高潮前至少有一条用更短的镜头（docs/20 第四节）")
+    for a, b in zip(clips_, clips_[1:]):
+        if a.get("location") != b.get("location") or b.get("time_jump"):
+            continue
+        for name in set(a.get("cast", {})) & set(b.get("cast", {})):
+            e, st_ = end_mark(a["cast"][name]), start_mark(b["cast"][name])
+            if e != st_:
+                E.append(f"第{b.get('n')}条 「{name}」开头在「{st_}」，可是第{a.get('n')}条结尾在「{e}」：同一场连续的戏站位要接上；"
+                         "中间确实跳过了时间就写 time_jump: \"跳过了什么\"（场记 crew/12，docs/07）")
     all_shots = [s for c in board.get("clips", []) for s in c.get("shots", [])]
     if all_shots and all(s.get("line") for s in all_shots):
         W.append("全片每一镜都有台词：至少留一段不靠台词、只用画面和声音讲的戏（docs/20 第二节第 5 条）")
@@ -573,6 +643,12 @@ class Clip:
         acts = s.get("action", [])
         for a in (acts if isinstance(acts, list) else [acts]):
             parts.append(f"第 {a['at']} 秒，{a['text']}" if isinstance(a, dict) and "at" in a else (a["text"] if isinstance(a, dict) else a))
+        if s.get("hit"):
+            h = s["hit"]
+            parts.append(f"动作因果：{h['support']}，{h['force']}，{h['contact']}，{h['reaction']}，{h['result']}")
+        if s.get("vfx"):
+            v = s["vfx"]
+            parts.append(f"特效：从{v['source']}发出，{v['direction']}，{v['scale']}，{v['speed']}；{v['medium']}；{v['light']}；{v['decay']}")
         if s.get("line"):
             ln = s["line"]
             how = f"（{ln['delivery']}）" if ln.get("delivery") else ""
@@ -600,7 +676,8 @@ class Clip:
                 object=s.get("object"), object_en=s.get("object_en"), hand=s.get("hand"), hand_en=s.get("hand_en"), view=s.get("view"),
                 action=[{"at": a.get("at"), "zh": a.get("text"), "en": a.get("en")} if isinstance(a, dict) else {"zh": a} for a in acts],
                 line=s.get("line"), sound=[{"zh": x.get("text"), "en": x.get("en"), "source": x.get("source")} for x in s.get("sound", []) if isinstance(x, dict)],
-                crowd=s.get("crowd"), move=({"kind": s["move"]["kind"], "en": move_text(s["move"], "en")} if s.get("move") and s["move"].get("kind") in MOVES else None)).items() if v}  # 结构化镜头：可灵 / 海螺 / 万相的专用编译器用
+                crowd=s.get("crowd"), hit_en=(s.get("hit") or {}).get("en"), vfx_en=(s.get("vfx") or {}).get("en"),
+                move=({"kind": s["move"]["kind"], "en": move_text(s["move"], "en")} if s.get("move") and s["move"].get("kind") in MOVES else None)).items() if v}  # 结构化镜头：可灵 / 海螺 / 万相的专用编译器用
             shots.append(sh)
             t0 += s["dur"]
         c = self.c
@@ -621,7 +698,8 @@ class Clip:
         axis_txt = f"{ots['fg']}和{ots['subject']}对话的轴线固定，整场不换边；" if ots else ""
         return dict(n=c["n"], dur=round(t0, 3), title=c["title"], summary=c.get("summary", c["title"]), model=c.get("model", "Seedance 2.5 + 白模"),
                     tags=tags, count=f"画面中始终只有 {len(cast)} 个有名字的角色：{brief}。{crowd_note}每一镜画面里有谁，以时间轴里\"画面里\"那一句为准。",
-                    context=c.get("context", c.get("summary", "")), extra_chars=[], voices=speakers,
+                    context=c.get("context", c.get("summary", "")) + (
+                        f"这场对话里，{c['drama']['a']}；{c['drama']['b']}；第 {c['drama']['shift']} 镜那句话之后，局面反过来。" if c.get("drama") else ""), extra_chars=[], voices=speakers,
                     sfx=" ".join(f"<{x['text']}>" for s in c["shots"] for x in s.get("sound", [])) or "无",
                     constraint=axis_txt + c.get("constraint", "") + "".join(
                         f"道具操作（{p['name']}）：{p['mechanism']}。" for p in self.b.get("props", []) if p["name"] in c.get("props", []) and p.get("mechanism")), axis={"a": ots["fg"], "b": ots["subject"]} if ots else None,
@@ -688,13 +766,16 @@ def build_specs(proj):
     idx = {it["tag"] for it in its}
     loc_index = {l["name"]: i for i, l in enumerate(bible["locations"])}
     clips, boxes = [], []
-    seen = set()
+    seen, prev = set(), None
     for c in board["clips"]:
         cl = Clip(bible, c, loc_index[c["location"]])
         world = cl.loc["world"]
         vid = lambda x: x.replace(" still;", " footage;").replace(" still ", " footage ").replace("still shot on", "footage shot on")  # noqa: E731  配方原是出图用语
         cl.style_en = f"Setting look: {vid(en[world])}." + (f" People look: {vid(en['__people__'])}." if en["__people__"] != en[world] else "")
         clips.append(cl.build(idx))
+        if prev and prev["location"] == c["location"] and not c.get("time_jump"):  # 连续的戏：上一条出片后的尾帧接进这一条（docs/07）
+            clips[-1]["splice_in"] = {"file": f"衔接/第{prev['n']}条_尾帧.png", "from": prev["n"]}
+        prev = c
         if c["location"] not in seen:
             boxes += cl.boxes()
             seen.add(c["location"])

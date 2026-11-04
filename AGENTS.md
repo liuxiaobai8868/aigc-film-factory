@@ -20,7 +20,7 @@ python3 tools/pipeline.py run projects/<项目>       # 按固定顺序跑，遇
 - 唯一要创作的是把剧本拆成 `设定.json` 和 `分镜.json`（格式与拆法 `docs/19`，照 `examples/样例-便利店/` 写），写完 `python3 tools/storyboard.py check projects/<项目>` 改到通过。
 - 唯一要"看"的是目检：逐张打开原图 / 白模拼图，按 `docs/18` 第四节清单判 pass / fix，用 `pipeline.py review` 记录。
 - `confirm`、`approve` 只在用户在对话里明确确认 / 同意花费后才执行，不能替用户做。
-- 出片后用 `python3 tools/pipeline.py qc projects/<项目> 第N条 <视频>` 审片，再按报告里的 24 分表看片打分。
+- 出片后用 `python3 tools/pipeline.py qc projects/<项目> 第N条 <视频>` 审片，再按报告里的 24 分表看片打分；同一场连续的戏，用 `pipeline.py splice projects/<项目> 第N条 <视频>` 截尾帧后再 run，下一条自动接上。
 
 要点：
 - 交付物：`交付/01-资产提示词.md`（每张图标推荐出图模型）+ `交付/投喂包/<模型>/第N条/`，都由流水线生成；只出 A 白模预演版。用户只确认故事、剧本和花费。

@@ -108,6 +108,8 @@ def short_duty(a, ref):
         return f"{ref} 是人间「{n}」镜头的机位、构图和画里的人与物。"
     if a["kind"] == "crowd":
         return f"{ref} 是「{n}」的群众演员：画面里的路人从这张图里按编号取长相、服装和道具（第 1 排从左到右 1–7，第 2 排 8–14），每人只出现一次；这些人都不是主角；不继承白底和排队版式。"
+    if a["kind"] == "tail":
+        return f"{ref} 是上一条视频的最后一帧：只取人物的位置、朝向、姿态、服装和伤湿状态，以及光，让这一条接得上；不作本条首帧构图，不继承它的画质。"
     if a["kind"] == "prop":
         return f"{ref} 是「{n}」的外形与材质（不继承灰底与并排版式）。"
     return f"{ref} 是「{n}」的空间、材质和光（不作首帧，不继承构图）。"
@@ -246,6 +248,16 @@ def ui_params(spec, model, dur, n_img):
 def compile_one(spec, model, style, out_root):
     lim = LIMITS[model]
     base = spec["_dir"]
+    tail_note = []
+    sp = spec.get("splice_in")
+    if sp:  # 连续的戏：上一条的尾帧作为参考图接进来（pipeline.py splice 截取）
+        if os.path.exists(os.path.join(base, sp["file"])) and len(spec["assets"]) < lim["images"]:
+            spec = dict(spec, assets=spec["assets"] + [{"tag": "@tail", "file": sp["file"], "kind": "tail", "name": f"第{sp['from']}条尾帧",
+                                                         "duty": f"@图片N — 第{sp['from']}条视频的最后一帧：只取人物的位置、朝向、姿态、服装和伤湿状态，以及光，让这一条接得上；不作本条首帧构图，不继承它的画质。"}])
+        elif not os.path.exists(os.path.join(base, sp["file"])):
+            tail_note.append(f"INFO  本条接第{sp['from']}条：那条出片后跑 `python3 tools/pipeline.py splice <项目> 第{sp['from']}条 <视频>` 截尾帧，再 run 重编，尾帧会作为参考图接进来")
+        else:
+            tail_note.append(f"WARN  参考图已满 {lim['images']} 张，第{sp['from']}条尾帧没接进来")
     previs = os.path.join(base, spec["previs"])
     parts = split_for(spec, model)
     made = []
@@ -284,7 +296,7 @@ def compile_one(spec, model, style, out_root):
         open(os.path.join(d, "界面参数.txt"), "w", encoding="utf-8").write(ui_params(spec, model, t1 - t0, len(files)))
         json.dump(api_request(spec, model, prompt, files, video, t1 - t0), open(os.path.join(d, "api_request.json"), "w", encoding="utf-8"),
                   ensure_ascii=False, indent=1)
-        chk = check_limits(spec, model, prompt, t1 - t0, len(spec["assets"]), style) + notes
+        chk = check_limits(spec, model, prompt, t1 - t0, len(spec["assets"]), style) + notes + (tail_note if k == 1 else [])
         missing = [a["file"] for a in assets if not os.path.exists(os.path.join(base, a["file"]))]
         if missing:
             chk.append(f"WAIT  还缺 {len(missing)} 张定稿图：{'、'.join(os.path.basename(m) for m in missing)}；出完图重编一次")

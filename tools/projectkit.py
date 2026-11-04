@@ -158,6 +158,8 @@ def ots(fg, fg_h, target, axis=None, back=0.7, lat=0.45, dz=0.15):
     瘦小的前景人物用 back≈0.9、lat≈0.28，否则 50mm 下前景会整个出画（《天劫外包》第 6 条教训）。"""
     dx, dy = target[0] - fg[0], target[1] - fg[1]
     L = math.hypot(dx, dy)
+    if L < 1e-6:
+        raise SystemExit("过肩镜头的前景人物和被拍的人站在同一个位置，算不出机位：把两人放到不同的站位（marks）")
     dx, dy = dx / L, dy / L
     best = None
     for s in (1, -1):
@@ -233,7 +235,7 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
             spec["axis"] = c["axis"]
         if c.get("chorus"):
             spec["chorus"] = c["chorus"]
-        for key in ("style_en", "summary_en"):
+        for key in ("style_en", "summary_en", "splice_in"):
             if c.get(key):
                 spec[key] = c[key]
         if texts.get("MUSIC_EN"):

@@ -10,6 +10,7 @@
   python3 tools/pipeline.py init <项目目录> <片名> <短名>     新项目（高级写法）：从 templates/project/ 拷入两个 Python 数据脚本
   python3 tools/pipeline.py selftest examples/样例-便利店     自测：不花钱（占位图），从样例数据跑到投喂包，和标准产物逐字比对
   python3 tools/pipeline.py qc <项目目录> <第N条> <视频文件>   审片：切点、时长、分段音量、台词听写，写 logs/审片_第N条.md
+  python3 tools/pipeline.py splice <项目目录> <第N条> <视频文件>  截这条视频的最后一帧到 交付/衔接/，下次 run 时接进下一条的投喂包（docs/07）
 
 阶段（顺序固定）：confirm → assets → images → asset_review → stress（可选）→ specs → previs → check_spec → geometry → framesheets
 → previs_review → compile → report。规则和每一步的含义见 docs/18-自动化流水线.md。
@@ -393,9 +394,24 @@ def st_report(proj, d):
     b = d["budget"]["images"]
     lines += ["", f"出图预算：批准 {b['approved']} 张，已用 {b['used']} 张。", "",
               f"投喂包：{', '.join(d['video_models'])}，在 `交付/投喂包/`。已知不提交的段落：{d.get('known_fails') or '无'}。", "",
+              ] + _curve(proj) + [
               "下一步：用户按投喂包出片（或接入出视频接口后由流水线提交），出完把视频交回审片（docs/04 24 分制 + docs/14 4.1 实拍教训）。"]
     open(os.path.join(proj, "logs", "流水线报告.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     mark(d, "report")
+
+
+def _curve(proj):
+    """全片能量曲线（分镜.json 的 energy），交付时给用户看节奏。"""
+    p = os.path.join(proj, "分镜.json")
+    if not os.path.exists(p):
+        return []
+    clips = json.load(open(p, encoding="utf-8")).get("clips", [])
+    rows = ["## 全片曲线", "", "| 条 | 能量 入→出 | 镜头数 | 平均镜长 | 压力源 |", "|---|---|---|---|---|"]
+    for c in clips:
+        e, sh = c.get("energy") or {}, c.get("shots", [])
+        bar = f"{'▮' * e.get('in', 0)} → {'▮' * e.get('out', 0)}"
+        rows.append(f"| {c.get('n')} {c.get('title', '')} | {bar} | {len(sh)} | {sum(x.get('dur', 0) for x in sh) / max(1, len(sh)):.1f} 秒 | {c.get('tension', '—')} |")
+    return rows + [""]
 
 
 FUNCS = {s: globals()["st_" + s] for s in STAGES}
@@ -497,7 +513,7 @@ def cmd_status(proj):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "selftest", "qc"])
+    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "selftest", "qc", "splice"])
     ap.add_argument("project")
     ap.add_argument("args", nargs="*")
     ap.add_argument("--until", choices=STAGES)
@@ -524,6 +540,16 @@ def main():
     if a.cmd == "qc":
         import qc_video
         return qc_video.main(proj, a.args[0], a.args[1])
+    if a.cmd == "splice":
+        n = a.args[0].replace("第", "").replace("条", "")
+        out = os.path.join(proj, "交付", "衔接", f"第{n}条_尾帧.png")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-sseof", "-0.1", "-i", a.args[1], "-frames:v", "1", "-update", "1", out],
+                           capture_output=True, text=True)
+        if r.returncode or not os.path.exists(out):
+            sys.exit(f"截尾帧失败：{r.stderr.strip()[:300]}")
+        print(f"已截第{n}条尾帧：{os.path.relpath(out, proj)}。NEXT：跑 `python3 tools/pipeline.py run {os.path.relpath(proj, ROOT)}` 重编下一条的投喂包")
+        return 0
     if a.cmd == "status":
         return cmd_status(proj)
     if a.cmd == "run":
