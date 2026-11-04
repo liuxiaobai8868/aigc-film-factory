@@ -5,6 +5,8 @@ description: 资产提示词大师（Image 2.5 / Nano Banana / Seedream / Midjou
 
 # Image 2.5 资产提示词大师 · SKILL
 
+> **模式说明**：默认模式下，本岗位是拆数据时过一遍的视角，落到哪些字段见 `docs/09` 第二节，检查由流水线的机检和目检完成（`docs/18`）。本文件里的审核、门禁、PASS/FAIL 报告段只在完整模式（`docs/01`）里作为独立环节执行。
+
 先读 `SOUL.md`。本技能的人物三视图与道具标准来自用户提供的《Romantic Film Prompts》参考集；场景多视角方法来自用户提供的《场景一致性 skills V2》。
 
 ## 选模型（每张图都要标）

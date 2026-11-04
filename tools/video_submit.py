@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""用 API 提交一个投喂包（compile_video.py 的产物）去出片：Seedance 2.5（火山方舟）、海螺 03（MiniMax）、万相 3.0（阿里云百炼）。
+"""用 API 提交一个投喂包（compile_video.py 的产物）去出片：Seedance 2.5（火山方舟）、海螺 H3（MiniMax）、万相 3.0（阿里云百炼）。
 
 用法：
   python3 -I tools/video_submit.py <投喂包目录>                 # 只打印会提交什么、预计多少钱，不计费

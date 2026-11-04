@@ -33,7 +33,7 @@ import model_prompts as MP  # noqa: E402
 LIMITS = {  # docs/13 第一节，2026-11 官方
     "seedance": {"名称": "Seedance 2.5（即梦 / 火山方舟）", "dur": (4, 30), "images": 30, "videos": 10, "video_total": 30, "chars": 5000, "lean_target": 1500},
     "kling": {"名称": "可灵 4.0（全能参考）", "dur": (3, 30), "images": 10, "videos": 5, "video_total": 30, "chars": 8000, "lean_target": 2500},
-    "hailuo": {"名称": "海螺 03 / MiniMax H3（全能参考 Ref2VA）", "dur": (4, 15), "images": 9, "videos": 3, "video_total": 15, "chars": 7000, "lean_target": 4000,
+    "hailuo": {"名称": "海螺 H3 / MiniMax（全能参考 Ref2VA）", "dur": (4, 15), "images": 9, "videos": 3, "video_total": 15, "chars": 7000, "lean_target": 4000,
                "words": (350, 500)},
     "wan": {"名称": "万相 3.0（参考生视频）", "dur": (2, 15), "images": 10, "videos": 5, "video_total": 15, "chars": 20000, "lean_target": 1500},
 }

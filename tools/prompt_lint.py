@@ -181,7 +181,7 @@ def _field(name, *texts):
 
 def sections(doc):
     """逐条、逐版本产出 (标题, 提示词, 时长, 画外禁名, 长镜头理由, 版本, 本条提醒)。
-    每条可以是单版本（旧格式），也可以是"### A 预演版 / ### B 无预演版"双版本（docs/09 第 3.3 节）。"""
+    每条默认只有 A 预演版；没有 Blender 时可加"### B 无预演版"（docs/09 第三节）。"""
     for part in re.split(r"\n(?=## 第)", doc)[1:]:
         title = part.splitlines()[0].lstrip("# ").strip()
         if "```text" not in part:
@@ -204,7 +204,7 @@ def sections(doc):
         if labels == {"A", "B"} and not _field("推荐", part):
             notes.append("FAIL  两个版本但没有「**推荐**：A 版 / B 版（理由：…）」一行")
         elif labels and labels != {"A", "B"} and "" not in labels:
-            notes.append("WARN  只有一个版本：每条应交 A 预演版和 B 无预演版两套（docs/09 第 3.3 节）")
+            pass  # 默认只出 A 白模预演版（docs/09 第三节），单版本不再提醒
         for label, sub in versions:
             m = re.search(r"界面参数\*\*：[^\n]*?(\d+(?:\.\d+)?)\s*秒", sub) or re.search(r"界面参数\*\*：[^\n]*?(\d+(?:\.\d+)?)\s*秒", part)
             b = _field("画外禁名", sub, part)
