@@ -114,7 +114,15 @@
    ],
    "constraint": "收银台在门的左手边；店里只有阿青和老周。",
    "splice": "出口：烟盒放在台面上。",
-   "summary_en": "At three in the morning, a regular customer comes into a quiet convenience store for his usual pack of cigarettes."
+   "summary_en": "At three in the morning, a regular customer comes into a quiet convenience store for his usual pack of cigarettes.",
+   "turn": {
+    "from": "空店里一个人数着时间",
+    "to": "等的人来了，一切照旧"
+   },
+   "signature": {
+    "shot": 3,
+    "why": "过肩看玻璃门被推开：冷白灯管下的湿肩膀、暖黄台灯的冷暖对冲、风铃一响打破冰柜的嗡声"
+   }
   },
   {
    "n": "2",
@@ -212,7 +220,15 @@
    ],
    "constraint": "阿青始终在收银台后。",
    "splice": "出口：阿青看着门口。",
-   "summary_en": "The customer pays and leaves; the people sheltering from the rain outside drift away."
+   "summary_en": "The customer pays and leaves; the people sheltering from the rain outside drift away.",
+   "turn": {
+    "from": "她第一次开口说话，有了一点暖意",
+    "to": "门关上，店里又只剩她一个"
+   },
+   "signature": {
+    "shot": 2,
+    "why": "朝门口的全景：老周走进渐小的雨，屋檐下的人一个个散去，雨声变小、风铃最后一响"
+   }
   }
  ]
 }

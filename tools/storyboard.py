@@ -34,6 +34,9 @@ BOXCOLOR = {"wood": [0.35, 0.25, 0.18], "white": [0.92, 0.92, 0.9], "stone": [0.
 LIP = ("对白：普通话，自然口语。所有角色只说花括号里的台词；每句台词只有说话的那一个角色动嘴，其余角色闭着嘴；画外音不对任何人的口型；"
        "人声干净贴近，有人说话时配乐和环境声自动压低。画面全程是纯影像，没有字幕。")
 ANCHOR = "人物都是正常的人体结构：两只手各五根手指。"
+SAVIOR = re.compile(r"金手指|系统(发|奖|签到)|签到|认亲|亲孙子|赘婿|战神|龙王|跪地求|求复合|豪门|一夜暴富|神豪|重生复仇|打脸")  # docs/20 第一节：等救主结构
+CORE_KEYS = {"want": "主角想要什么", "need": "他真正需要什么", "choice": "关键时刻他自己做的选择", "cost": "这个选择让他失去什么",
+             "image": "能说出主题的那个画面"}
 CROWD_WORDS = re.compile(r"路人|人群|群众|顾客们|村民|行人|正式工们|士兵们|客人们|观众")
 HAND_WORDS = re.compile(r"手|拇指|食指|指尖|掌心")
 SEP = re.compile(r"[，。！？、…\s\.,!?—~～「」“”\"'（）()]")
@@ -73,6 +76,15 @@ def validate(bible, board, models=("seedance",)):
             E.append(f"设定.json 缺字段 {k}")
     if E:
         return E, W
+    core = bible.get("core") or {}
+    for k, zh in CORE_KEYS.items():  # docs/20 第三节内核闸门 A–E
+        if len(str(core.get(k, "")).strip()) < 4:
+            E.append(f"设定.json 的 core.{k} 没写或太短：{zh}（docs/20 第三节；写不出来说明故事内核还没立住，回到故事阶段）")
+    if core and core.get("choice") and re.search(r"被|等|得到|获得|认出|揭晓", str(core.get("choice"))[:6]):
+        W.append("core.choice 读起来像是主角在等或被动得到；关键选择要是他主动做的（docs/20 第三节 A）")
+    hit = SAVIOR.search(" ".join(str(x) for x in [core, bible.get("three", ""), bible.get("title", "")]))
+    if hit:
+        E.append(f"故事内核里出现「{hit.group(0)}」：这是等救主结构（docs/20 第一节、第三节 F），本工厂不做；回到故事阶段换内核")
     for w, v in bible["worlds"].items():
         if v.get("recipe") not in recipes:
             E.append(f"世界「{w}」的 recipe {v.get('recipe')} 不在 config/style_recipes.json（用 tools/mj_style.py --recipes 看）")
@@ -130,6 +142,11 @@ def validate(bible, board, models=("seedance",)):
             if p not in props:
                 E.append(f"{tag} props 里的「{p}」不在设定的 props 里")
         shots = clip.get("shots", [])
+        turn, sig = clip.get("turn") or {}, clip.get("signature") or {}
+        if not (turn.get("from") and turn.get("to")) or turn.get("from") == turn.get("to"):
+            E.append(f"{tag} 缺价值翻转 turn: {{\"from\": 开头的处境, \"to\": 结尾的处境}}，两头要相反（docs/20 第四节）")
+        if not isinstance(sig.get("shot"), int) or not 1 <= sig["shot"] <= len(shots) or len(str(sig.get("why", ""))) < 6:
+            E.append(f"{tag} 缺视听高光 signature: {{\"shot\": 第几镜, \"why\": 构图、光、运动、声音怎么同时发力}}（docs/20 第四节）")
         if need_en and not clip.get("summary_en"):
             E.append(f"{tag} 缺 summary_en：这一条的英文一句话" + EN)
         total = sum(s.get("dur", 0) for s in shots)
@@ -217,6 +234,9 @@ def validate(bible, board, models=("seedance",)):
                     W.append(f"{st} 声音「{snd['text']}」的声源「{snd['source']}」不在画里，模型可能不出声")
         if len(pairs) > 1 and not clip.get("allow_axis_change"):
             E.append(f"{tag} 过肩用了 {len(pairs)} 组人物，轴线会乱；一条里只拍一组对话，或写 allow_axis_change: true 并在镜头里交代换轴")
+    all_shots = [s for c in board.get("clips", []) for s in c.get("shots", [])]
+    if all_shots and all(s.get("line") for s in all_shots):
+        W.append("全片每一镜都有台词：至少留一段不靠台词、只用画面和声音讲的戏（docs/20 第二节第 5 条）")
     return E, W
 
 
