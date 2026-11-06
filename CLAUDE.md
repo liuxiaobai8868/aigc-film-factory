@@ -31,6 +31,7 @@
 | `docs/17-群像方法.md` | 群众演员 / 配角群像：按世界一张 14 人群像，职业、服装、体型做差异，主角图作风格参考；选定风格后与主角三视图一起出 |
 | `docs/18-自动化流水线.md` | **剧本确认后默认走流水线**：`python3 tools/pipeline.py status|run projects/<项目>`，只照 NEXT 做；用户只确认故事、剧本和花费 |
 | `docs/19-分镜数据格式.md` | 剧本拆成 设定.json + 分镜.json 的格式与拆法；`tools/storyboard.py check` 校验；样例 `examples/样例-便利店/`；`pipeline.py selftest` 自测 |
+| `docs/21-类型片库与时长档位.md` | **立项先问**：用户挑类型卡（25 张：科幻、恐怖、悬疑、犯罪、武侠、奇幻、喜剧、怪兽、战争、爱情、剧情、动画）和时长档位（1 分钟内 → 10–15 分钟）；卡上的影调交给美术、摄影、角色、声音，写进 `设定.json` 的 `look`；`tools/genre.py --menu / --card / --tiers / --estimate` |
 | `docs/20-顶级标准.md` | **全工厂最高标准**：不做等救主式电子垃圾；短片六个硬指标（对照《爱死机》）；故事内核闸门 A–H；每条视听丰富度预算与张力（不要四平八稳）；26 个岗位的顶级标准；自我进化规程（每个项目先研究 3 部顶级作品，每条审完把教训写成规则） |
 | `tools/` | `prompt_lint.py` 机检；`image_gen.py` 多接口出图（配置 `config/image_providers.json`，密钥 `.env`）；`previs/` 白模预演（规格 JSON → 视频） |
 
@@ -83,7 +84,7 @@
 
 ## 指令
 
-`~start [项目]` `~status` `~mode` `~style` `~story` `~script` `~direct` `~look` `~sets` `~cast` `~acting` `~sound` `~dialogue` `~drama [场]` `~action [场]` `~vfx [场]` `~image` `~registry` `~assets` `~board [场]` `~compile [条]` `~qa [条]` `~approve [条]` `~qc [条]` `~post` `~mix` `~help`（详见 `crew/00-showrunner/SKILL.md` 第八节）
+`~start [项目]` `~status` `~mode` `~genre`（类型菜单）`~tier`（时长档位与估价）`~style` `~story` `~script` `~direct` `~look` `~sets` `~cast` `~acting` `~sound` `~dialogue` `~drama [场]` `~action [场]` `~vfx [场]` `~image` `~registry` `~assets` `~board [场]` `~compile [条]` `~qa [条]` `~approve [条]` `~qc [条]` `~post` `~mix` `~help`（详见 `crew/00-showrunner/SKILL.md` 第八节）
 
 ## 初始化
 

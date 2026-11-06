@@ -58,6 +58,10 @@ def hailuo(spec, part, short_duty_fn):
             defs.append(f"{lab}: {a['name']} — {en} Appearance from uploaded image {i} (face only from the large portrait on the right; "
                         "the blurred oval on the full-body view is not a face; backdrop and sheet layout not carried over).")
             keep.append(f"{lab}: fully_preserved — face, hair, costume and body shape")
+        elif a["kind"] == "giant":
+            defs.append(f"{lab}: {a['name']} — {en} Shape, materials, colors and scale from uploaded design sheet {i} "
+                        "(backdrop and sheet layout not carried over).")
+            keep.append(f"{lab}: fully_preserved — silhouette, materials, colors and scale")
         elif a["kind"] == "crowd":
             defs.append(f"{lab}: crowd extras — {en}. They come from uploaded reference image {i}, a lineup sheet of 14 numbered people "
                         "(row 1 left to right = 1–7, row 2 = 8–14); only the numbered people named below appear, each at most once, "
@@ -136,7 +140,7 @@ def hailuo(spec, part, short_duty_fn):
             who = label.get(ln["who"], ln["who"])
             first = ln["who"] not in sids
             sids.setdefault(ln["who"], f"S{len(sids) + 1}")
-            voice = next((a2.get("voice_en") for a2 in assets if a2["name"] == ln["who"]), "")
+            voice = next((a2.get("voice_en") for a2 in assets if a2["name"] == ln["who"]), "") or spec.get("voice_en", {}).get(ln["who"], "")
             ident = f"{who} ({sids[ln['who']]})" + (f", {voice}," if first and voice else "")
             mode = ln.get("mode", "on")
             verb = {"on": "says", "back": "seen from behind in the foreground, says",

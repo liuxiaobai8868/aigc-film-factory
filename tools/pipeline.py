@@ -394,10 +394,22 @@ def st_report(proj, d):
     b = d["budget"]["images"]
     lines += ["", f"出图预算：批准 {b['approved']} 张，已用 {b['used']} 张。", "",
               f"投喂包：{', '.join(d['video_models'])}，在 `交付/投喂包/`。已知不提交的段落：{d.get('known_fails') or '无'}。", "",
-              ] + _curve(proj) + [
+              ] + _curve(proj) + _cost(proj) + [
               "下一步：用户按投喂包出片（或接入出视频接口后由流水线提交），出完把视频交回审片（docs/04 24 分制 + docs/14 4.1 实拍教训）。"]
     open(os.path.join(proj, "logs", "流水线报告.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     mark(d, "report")
+
+
+def _cost(proj):
+    """出视频大约花多少钱（config/prices.json，以账单为准；docs/21 第三节）。"""
+    p = os.path.join(proj, "分镜.json")
+    if not os.path.exists(p):
+        return []
+    sec = sum(s.get("dur", 0) for c in json.load(open(p, encoding="utf-8")).get("clips", []) for s in c.get("shots", []))
+    sys.path.insert(0, TOOLS)
+    import genre
+    return ["## 出视频估价", "", f"全片 {sec:g} 秒，一次通过、不含重拍：", ""] + [f"- {x}" for x in genre.estimate(sec)] + \
+        ["", "单价见 config/prices.json，来源写在每一项；出片后用实际账单校准。", ""]
 
 
 def _curve(proj):

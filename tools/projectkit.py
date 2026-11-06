@@ -38,6 +38,12 @@ SHEET = ("LAYOUT: One wide 16:9 image with three views against a seamless neutra
          "Light the figures with a soft key light in the STYLE color temperature plus a thin rim light; every view stays fully sharp from head to toe. "
          "No text, labels, numbers or watermarks anywhere.")
 
+GIANT_SHEET = ("LAYOUT: One wide 16:9 design sheet of a single colossal creature or machine against a seamless neutral mid-grey backdrop tinted toward the STYLE palette. "
+               "On the left two thirds, two full-body views in its natural stance (on four legs if it has four legs), identical in scale and fully in frame: "
+               "a three-quarter front view and a straight side view. On the right third, one large close-up of its most recognisable part (head, face plate or chest). "
+               "No human figures. Light it with a soft key light in the STYLE color temperature plus a thin rim light; every view stays fully sharp. "
+               "No text, labels, numbers or watermarks anywhere.")
+
 CROWD_LAYOUT = ("LAYOUT: One wide 16:9 image of 14 full-body adults in two rows of 7 against a seamless pure white studio background "
                 "with soft, even light and only soft contact shadows under the feet. All 14 are photographed from the same camera distance "
                 "at the same scale, so their real heights show: within each row every person's feet stand on the same ground line, and taller "
@@ -77,7 +83,7 @@ def write_asset_doc(project_root, title, items, style, style_note, order_note=""
         kinds[it["type"]] = kinds.get(it["type"], 0) + 1
         rows.append(f"| {n} | {it['tag']} | {it['file']} | {it['type']} | {it['rec']} | {it['deps']} | {it['use']} |")
         locked = f"LOCKED 描述锁 (verbatim)：\n{it['lock']}"
-        mid = f"\n\n{SHEET}" if it["type"] == "人物三视图" else ""
+        mid = f"\n\n{SHEET}" if it["type"] == "人物三视图" else (f"\n\n{GIANT_SHEET}" if it["type"] == "巨物设定图" else "")
         st = style[it["world"]]
         art = f"\n\n美术要求（必须体现）：{it['art']}" if it.get("art") else ""
         text = f"{it['en']}\n\n{locked}{art}{mid}\n\n{it['must']}\n\nSTYLE: {st}"
@@ -180,7 +186,7 @@ def _kind(it):
         return "character"
     if it["tag"].startswith("@prop"):
         return "prop"
-    return {"人类视角机位": "human_view", "群像": "crowd"}.get(t, "scene")
+    return {"人类视角机位": "human_view", "群像": "crowd", "巨物设定图": "giant"}.get(t, "scene")
 
 
 def export(project_root, project, short, items, world_boxes, clips, texts, previs_colors, world_color=(0.14, 0.15, 0.2)):
@@ -221,12 +227,12 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
                 geo.append(it["lock"])
                 if it.get("geo_note") and it["geo_note"] not in geo:  # 光逻辑、锚点物、时代锁：进视频提示词
                     geo.append(it["geo_note"])
-            if kind == "character":
+            if kind in ("character", "giant"):
                 chars.append(it["lock"])
         spec = {"schema": "aigc-shot-spec/1", "project": project, "clip": n, "title": c["title"], "duration": c["dur"], "ratio": "16:9",
                 "resolution": "720p", "summary": c["summary"], "model_hint": c["model"],
                 "previs": f"预演/previs_{short}_第{n}条.mp4", "previs_spec": f"../预演规格/第{n}条.json", "previs_colors": previs_colors,
-                "assets": assets, "count": c["count"], "context": c["context"], "two_worlds": texts["THREE"], "style": texts["STYLE"],
+                "assets": assets, "count": c["count"], "context": c["context"], "two_worlds": texts["THREE"], "style": c.get("style_zh", texts["STYLE"]),
                 "geo": geo, "chars": chars + c.get("extra_chars", []), "music": texts["MUSIC"], "sfx": c["sfx"],
                 "voices": [texts["VOICE"][v] for v in c.get("voices", [])], "lip": texts["LIP"], "shots": spec_shots,
                 "constraint": texts["ANCHOR"] + c["constraint"], "ban": "无", "long_take": "", "fail": c["fail"], "risk": c["risk"],
@@ -235,6 +241,10 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
             spec["axis"] = c["axis"]
         if c.get("chorus"):
             spec["chorus"] = c["chorus"]
+        if texts.get("VOICE_EN"):  # 只有声音的角色（kind: voice）没有资产图，海螺 H3 从这里取音色英文
+            ve = {v: texts["VOICE_EN"][v] for v in c.get("voices", []) if v in texts["VOICE_EN"]}
+            if ve:
+                spec["voice_en"] = ve
         for key in ("style_en", "summary_en", "splice_in"):
             if c.get(key):
                 spec[key] = c[key]

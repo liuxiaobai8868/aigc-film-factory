@@ -136,6 +136,15 @@ def validate(bible, board, models=("seedance",)):
     locs = {l["name"]: l for l in bible["locations"]}
     crowds = {c["world"]: c for c in bible.get("crowds", [])}
     for c in bible["characters"]:
+        if c.get("kind") not in (None, "giant", "voice"):
+            E.append(f"人物「{c.get('name')}」的 kind 只能是 giant（巨物：怪兽、机甲、巨人，出巨物设定图）或 voice（只有声音：电话、广播、对讲机，不出图、不入画）")
+        if c.get("kind") == "voice":
+            for k in ("voice",) + (("voice_en",) if need_en else ()):
+                if k not in c:
+                    E.append(f"人物「{c.get('name')}」缺 {k}" + (EN if k == "voice_en" else ""))
+            continue
+        if c.get("kind") == "giant" and c.get("recipe", bible.get("giant_recipe", "R15")) not in recipes:
+            E.append(f"巨物「{c.get('name')}」的 recipe {c.get('recipe', bible.get('giant_recipe', 'R15'))} 不存在")
         for k in ("lock", "brief_en", "must_en", "height", "voice") + (("voice_en",) if need_en else ()):
             if k not in c:
                 E.append(f"人物「{c.get('name')}」缺 {k}" + (EN if k == "voice_en" else ""))
@@ -191,6 +200,8 @@ def validate(bible, board, models=("seedance",)):
         for name, cv in cast.items():
             if name not in chars:
                 E.append(f"{tag} cast 里的「{name}」不是设定里的人物")
+            elif chars[name].get("kind") == "voice":
+                E.append(f"{tag} 「{name}」是只有声音的角色（kind: voice），不能进 cast；他的台词写 mode: off")
             for p in ([cv] if "at" in cv else cv.get("path", [])):
                 if isinstance(p.get("at"), str) and p["at"] not in marks:
                     E.append(f"{tag} 「{name}」的站位「{p['at']}」不在场景「{loc}」的 marks 里")
@@ -314,6 +325,8 @@ def validate(bible, board, models=("seedance",)):
                 who = line.get("who")
                 if who not in chars:
                     E.append(f"{st} 台词的 who「{who}」不是人物")
+                elif chars[who].get("kind") == "voice" and mode != "off":
+                    E.append(f"{st} 「{who}」只有声音（kind: voice），台词 mode 要写 off")
                 elif mode == "on" and who not in vis:
                     E.append(f"{st} 说话人「{who}」不在画里：让他入画，或 mode 写 back（背对镜头 / 过肩前景）或 off（画外）")
                 elif mode == "back" and who != s.get("fg"):
@@ -381,7 +394,97 @@ def validate(bible, board, models=("seedance",)):
     all_shots = [s for c in board.get("clips", []) for s in c.get("shots", [])]
     if all_shots and all(s.get("line") for s in all_shots):
         W.append("全片每一镜都有台词：至少留一段不靠台词、只用画面和声音讲的戏（docs/20 第二节第 5 条）")
+    look_check(bible, board, E, W)
+    ai_weak_check(board, W)
     return E, W
+
+
+# ---------------- 类型片库与时长档位（docs/21） ----------------
+
+def _cfg(name):
+    return json.load(open(os.path.join(ROOT, "config", name), encoding="utf-8"))
+
+
+def look_check(bible, board, E, W):
+    """设定.json 的 look：{"genre": "G18" 或 ["G18", "G17"], "tier": "1-3"}。没写 look 不检查（老项目）。"""
+    look = bible.get("look")
+    if not look:
+        return
+    lib = {c["id"]: c for c in _cfg("genre_library.json")["类型"]}
+    tiers = {t["id"]: t for t in _cfg("duration_tiers.json")["档位"]}
+    gids = look.get("genre") or []
+    gids = [gids] if isinstance(gids, str) else gids
+    cards = []
+    for g in gids:
+        if g not in lib:
+            E.append(f"look.genre「{g}」不在类型片库里（python3 -I tools/genre.py --menu）")
+        else:
+            cards.append(lib[g])
+    clips = board.get("clips", [])
+    shots = [s for c in clips for s in c.get("shots", [])]
+    if cards and shots:
+        recs = {r for c in cards for r in c["风格配方"]}
+        used = {v.get("recipe") for v in bible.get("worlds", {}).values()} | {bible.get("people_recipe")}
+        if not used & recs:
+            W.append(f"世界和人物的风格配方 {sorted(x for x in used if x)} 都不在所选类型卡的配方 {sorted(recs)} 里：确认是有意混搭，或换配方（docs/21）")
+        lo = min(c["剪辑"]["平均镜长"][0] for c in cards)
+        hi = max(c["剪辑"]["平均镜长"][1] for c in cards)
+        avg = sum(s.get("dur", 0) for s in shots) / len(shots)
+        if not lo * 0.75 <= avg <= hi * 1.25:
+            W.append(f"全片平均镜长 {avg:.1f} 秒，所选类型的节奏是 {lo}–{hi} 秒（{'；'.join(c['剪辑']['说明'] for c in cards)}）：确认是有意的，或调整镜头时长")
+        ban = {m for c in cards for m in c["禁用运镜"]}
+        for c in clips:
+            for k, s in enumerate(c.get("shots", []), 1):
+                if (s.get("move") or {}).get("kind") in ban:
+                    W.append(f"第{c.get('n')}条 镜{k} 用了运镜 {s['move']['kind']}，所选类型卡不用它（{'、'.join(sorted(ban))}）")
+    tid = look.get("tier")
+    if tid:
+        if tid not in tiers:
+            E.append(f"look.tier「{tid}」不在时长档位里（python3 -I tools/genre.py --tiers）")
+            return
+        t = tiers[tid]
+        total = sum(s.get("dur", 0) for s in shots)
+        if not t["秒"][0] <= total <= t["秒"][1]:
+            W.append(f"全片 {total:g} 秒，不在档位「{t['名称']}」的 {t['秒'][0]}–{t['秒'][1]} 秒里：换档位，或增删条（扩写见 docs/21 第四节）")
+        if not t["条"][0] <= len(clips) <= t["条"][1]:
+            W.append(f"全片 {len(clips)} 条，档位「{t['名称']}」建议 {t['条'][0]}–{t['条'][1]} 条")
+        nloc = len({c.get("location") for c in clips})
+        if nloc > t["场景上限"]:
+            W.append(f"用了 {nloc} 个场景，档位「{t['名称']}」建议不超过 {t['场景上限']} 个：场景越多一致性越难保")
+        named = [c["name"] for c in bible.get("characters", []) if not c.get("kind")]
+        if len(named) > t["角色上限"]:
+            W.append(f"有名字的角色 {len(named)} 个，档位「{t['名称']}」建议不超过 {t['角色上限']} 个")
+
+
+AI_WEAK = [  # Eian 2026-11-05 实测弱点 + docs/14 4.1（提醒，不拦）
+    (re.compile(r"镜子|倒影|镜中|镜面"), "镜子和倒影：模型常画错镜像，能删就删，留着就让它只做背景"),
+    (re.compile(r"字幕|写着|上面的字|招牌上的|屏幕上的字|文字"), "画面里的文字：模型写不对，改成后期合成"),
+    (re.compile(r"交叉|擦肩|穿过人群|绕过对方"), "人物交叉走位：容易穿模或换脸，改成一人静止一人移动"),
+    (re.compile(r"由[^，。；、]{1,4}变[^，。；、]{1,4}|熄灭|亮起|灯灭|变暗|变亮"), "一镜内换光：写清光源在画里、只变这一处，其余光不变"),
+]
+SAME_TIME = re.compile(r"所有人|大家|众人|全体|一起|同时|齐刷刷|纷纷")
+ORDER_WORDS = re.compile(r"先|后|接着|随后|最后|依次|一个接一个")
+SEQ_WORDS = re.compile(r"然后|接着|随后|又|再")
+
+
+def ai_weak_check(board, W):
+    """AI 视频的固定弱点（docs/14 4.1、Eian 文章）：只提醒，不拦。"""
+    for c in board.get("clips", []):
+        for k, s in enumerate(c.get("shots", []), 1):
+            acts = s.get("action", [])
+            acts = acts if isinstance(acts, list) else [acts]
+            txt = " ".join(a.get("text", "") if isinstance(a, dict) else str(a) for a in acts)
+            st = f"第{c.get('n')}条 镜{k}"
+            for rx, why in AI_WEAK:
+                m = rx.search(txt)
+                if m:
+                    W.append(f"{st}「{m.group(0)}」：{why}")
+            if SAME_TIME.search(txt) and not ORDER_WORDS.search(txt):
+                W.append(f"{st} 多人同时做同一个动作：真人的反应有先后，写清谁先谁后，否则模型会让所有人同一秒动（Eian 实测）")
+            if s.get("type") in ("single", "ots", "track"):
+                segs = [x for x in re.split(r"[，；。]", txt) if x.strip()]
+                if len(segs) >= 6 or len(SEQ_WORDS.findall(txt)) >= 2:
+                    W.append(f"{st} 一镜里的动作可能超过两个（{len(segs)} 段）：每镜只写一两个主要动作，其余拆到别的镜头（Eian：一人连做三个动作最容易抽卡）")
 
 
 # ---------------- 资产 ----------------
@@ -408,6 +511,18 @@ def items(bible, board):
         idx[key] = len(out)
 
     for c in bible["characters"]:
+        if c.get("kind") == "voice":  # 只有声音：不出图
+            continue
+        if c.get("kind") == "giant":  # 巨物：自然姿态设定图，不做三视图和脸模糊（docs/19）
+            push(c["name"], dict(tag=f"@{c['name']}", world="__giant__" + c["name"], file=f"{c['name']}_设定图.png", type="巨物设定图", rec=REC, deps="—",
+                                 art=f"剪影识别点：{c['silhouette']}" if c.get("silhouette") else "",
+                                 brief_en=c["brief_en"], voice_en=c.get("voice_en", ""),
+                                 use=use(f"@{c['name']}"), lock=c["lock"],
+                                 en=f"Create a creature / machine design sheet for a {film}: {c['brief_en']}",
+                                 must=f"MUST BE READABLE: {c['must_en']} CLOSE-UP: {c.get('portrait_en', 'its most recognisable part.')}",
+                                 check=c.get("check", []) + ["自然姿态的三分之四正面 + 侧面 + 局部特写", "没有人", "没有文字"],
+                                 duty=f"「{c['name']}」：外形、材质、颜色和比例从设定图取；不继承灰底和设定图版式。"))
+            continue
         must = f"MUST BE READABLE: {c['must_en']} PORTRAIT: {c.get('portrait_en', 'restrained expression, mouth closed.')}"
         push(c["name"], dict(tag=f"@{c['name']}", world="__people__", file=f"{c['name']}_三视图.png", type="人物三视图", rec=REC, deps="—",
                              art=f"剪影识别点：{c['silhouette']}" if c.get("silhouette") else "",
@@ -464,6 +579,9 @@ def style_map(bible):
     rec = {r["id"]: r for r in json.load(open(os.path.join(ROOT, "config", "style_recipes.json"), encoding="utf-8"))["配方"]}
     en = {w: rec[v["recipe"]]["en"] for w, v in bible["worlds"].items()}
     en["__people__"] = rec[bible["people_recipe"]]["en"]
+    for c in bible["characters"]:
+        if c.get("kind") == "giant":
+            en["__giant__" + c["name"]] = rec[c.get("recipe", bible.get("giant_recipe", "R15"))]["en"]
     zh = "；".join(f"{w}（{v['recipe']}）：{rec[v['recipe']]['zh']}" for w, v in bible["worlds"].items())
     zh += f"；人物（{bible['people_recipe']}）：{rec[bible['people_recipe']]['zh']}"
     note = "；".join(f"{w} {v['recipe']} {rec[v['recipe']]['名称']}" for w, v in bible["worlds"].items()) + \
@@ -544,7 +662,8 @@ class Clip:
                 keys.append((p["t"], self.pt(p["at"]), face, p.get("lean", 0)))
             dur = sum(s["dur"] for s in self.c["shots"])
             keys.append((dur, keys[-1][1], keys[-1][2], keys[-1][3]))
-            out.append(K.person(name, PALETTE[i % len(PALETTE)], self.height(name), keys))
+            ci = [c["name"] for c in self.b["characters"] if c.get("kind") != "voice"].index(name)  # 和投喂包里的识别色说明同一套编号
+            out.append(K.person(name, PALETTE[ci % len(PALETTE)], self.height(name), keys))
         return out
 
     def boxes(self):
@@ -729,10 +848,11 @@ def build_stress(proj):
     locs = bible["locations"]
     out = [dict(it) for it in sheets]
     idx = {it["tag"]: i + 1 for i, it in enumerate(out)}
-    for k, c in enumerate(bible["characters"]):
+    mains = [c for c in bible["characters"] if not c.get("kind")]
+    for k, c in enumerate(mains):
         me = idx[f"@{c['name']}"]
         la, lb = locs[k % len(locs)], locs[(k + 1) % len(locs)]
-        partner = bible["characters"][(k + 1) % len(bible["characters"])] if len(bible["characters"]) > 1 else None
+        partner = mains[(k + 1) % len(mains)] if len(mains) > 1 else None
         same = "Image 1 is the approved character sheet: render this exact person (face from the large portrait on the right), " \
                "same face, hair, costume and body; clearly an adult; no text anywhere."
         tests = [("3/4 中近景 · " + la["name"] + "的光", f"A cinematic photoreal still of a {film}: a three-quarter medium close-up of {c['brief_en']} "
@@ -772,7 +892,11 @@ def build_specs(proj):
         world = cl.loc["world"]
         vid = lambda x: x.replace(" still;", " footage;").replace(" still ", " footage ").replace("still shot on", "footage shot on")  # noqa: E731  配方原是出图用语
         cl.style_en = f"Setting look: {vid(en[world])}." + (f" People look: {vid(en['__people__'])}." if en["__people__"] != en[world] else "")
+        rz = {r["id"]: r for r in json.load(open(os.path.join(ROOT, "config", "style_recipes.json"), encoding="utf-8"))["配方"]}  # 每条只写本条所在世界的质感（docs/16）
+        wr, pr = bible["worlds"][world]["recipe"], bible["people_recipe"]
+        style_zh = f"质感：{world}（{wr}）：{rz[wr]['zh']}；人物（{pr}）：{rz[pr]['zh']}。"
         clips.append(cl.build(idx))
+        clips[-1]["style_zh"] = style_zh
         if prev and prev["location"] == c["location"] and not c.get("time_jump"):  # 连续的戏：上一条出片后的尾帧接进这一条（docs/07）
             clips[-1]["splice_in"] = {"file": f"衔接/第{prev['n']}条_尾帧.png", "from": prev["n"]}
         prev = c
@@ -780,10 +904,13 @@ def build_specs(proj):
             boxes += cl.boxes()
             seen.add(c["location"])
     voice = {c["name"]: f"{c['name']}：{c['voice']}" for c in bible["characters"]}
+    voice_en = {c["name"]: c["voice_en"] for c in bible["characters"] if c.get("kind") == "voice" and c.get("voice_en")}
     texts = dict(THREE=bible["three"], STYLE=zh, MUSIC=bible["music"], MUSIC_EN=bible.get("music_en"), VOICE=voice, LIP=bible.get("lip", LIP),
                  ANCHOR=ANCHOR + bible.get("anchor_extra", ""))
+    if voice_en:
+        texts["VOICE_EN"] = voice_en
     os.makedirs(os.path.join(proj, "预演规格"), exist_ok=True)
-    colors = "，".join(f"{PALETTE_ZH[i % 6]}色圆柱={c['name']}" for i, c in enumerate(bible["characters"])) + "，灰白方块=场景和道具"
+    colors = "，".join(f"{PALETTE_ZH[i % 6]}色圆柱={c['name']}" for i, c in enumerate(x for x in bible["characters"] if x.get("kind") != "voice")) + "，灰白方块=场景和道具"
     K.export(proj, bible["title"], bible["short"], its, boxes, clips, texts, colors)
     return len(clips), W
 

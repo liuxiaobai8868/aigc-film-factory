@@ -144,6 +144,94 @@
    "适合": "青春、怀旧、轻情绪",
    "en": "35mm film portrait; soft side window light or misty dawn backlight; very low contrast, muted grey-blue with a faint warm glow; gentle light leaks; natural realistic skin with subtle texture; clean, noise-free image; quiet, intimate",
    "zh": "35 毫米胶片人像质感；柔和的侧窗光或清晨雾中逆光；极低反差，灰蓝低饱和里一点暖光；轻微漏光；皮肤自然真实，有细微纹理；安静、亲密"
+  },
+  {
+   "id": "R19",
+   "名称": "粗野主义科幻",
+   "来源": "类型片库 G01（文字配方，未出试图）",
+   "适合": "科幻巨物、荒漠、巨型建筑、静默",
+   "en": "photoreal epic science-fiction still, near live-action; vast brutalist monolithic architecture rising out of empty desert or fog; monochrome palette of sand, ash and slate grey with one muted accent color; soft light from the side and behind, diffused through thick haze; a tiny human figure for scale; wide, still, austere composition; clean, noise-free image with smooth shadow gradients",
+   "zh": "近真人的史诗科幻；巨大的粗野主义单体建筑从荒漠或浓雾里升起；沙色、灰烬色、石板灰的单色调，只有一个低饱和点缀色；侧后方的光穿过浓雾，柔和；画面里一个极小的人做尺度参照；宽、静、克制的构图；画面干净，暗部过渡平滑"
+  },
+  {
+   "id": "R20",
+   "名称": "工业烟雾逆光",
+   "来源": "类型片库 G02（文字配方，未出试图）",
+   "适合": "工业科幻、飞船内部、雨夜城市",
+   "en": "cinematic photoreal still, near live-action; grimy industrial interiors and rain-soaked streets; dense smoke and steam backlit by hard shafts of light; amber sodium lamps against cold blue practical lights; deep blacks; wet reflective surfaces; true-to-life worn metal, rubber and plastic; clean, noise-free image",
+   "zh": "近真人的电影写实；脏旧的工业内景和被雨泡透的街道；浓烟和蒸汽被硬光束从背后打透；琥珀色钠灯对冷蓝色实用光；黑位深；湿的反光表面；金属、橡胶、塑料有真实的磨损；画面干净"
+  },
+  {
+   "id": "R21",
+   "名称": "白昼民俗恐怖",
+   "来源": "类型片库 G05（文字配方，未出试图）",
+   "适合": "白昼恐怖、乡村仪式、开阔草地",
+   "en": "photoreal cinematic still; bright, even, almost overexposed summer daylight with nowhere to hide; pale washed-out palette of white linen, straw and meadow green with one ritual accent color; symmetrical, static wide framing; people small in an open landscape; an unsettling calm; clean, noise-free image",
+   "zh": "近真人的电影写实；明亮、均匀、几乎过曝的夏日白昼，没有可以藏的阴影；白麻布、干草、草地绿的淡色调，只有一个仪式性的点缀色；对称、固定的宽画面；人在开阔的风景里很小；让人不安的平静；画面干净"
+  },
+  {
+   "id": "R22",
+   "名称": "冷绿精确惊悚",
+   "来源": "类型片库 G08（文字配方，未出试图）",
+   "适合": "悬疑、犯罪调查、办公室、审讯室",
+   "en": "cinematic photoreal still; precise, symmetrical framing with clean architectural lines; desaturated palette pushed toward sickly green and dull amber; low-key practical light, faces half in shadow; controlled, clinical mood; smooth shadow gradients, clean, noise-free image",
+   "zh": "近真人的电影写实；精确、对称的构图，建筑线条干净；去饱和，整体偏病态的青绿和暗琥珀；低调的实用光，脸一半在阴影里；冷静、克制、像手术室一样精确；暗部过渡平滑，画面干净"
+  },
+  {
+   "id": "R23",
+   "名称": "城市夜景数码",
+   "来源": "类型片库 G10（文字配方，未出试图）",
+   "适合": "城市夜戏、犯罪、孤独的城市",
+   "en": "cinematic photoreal night still with the look of high-sensitivity digital video; city lights rendered as soft orange and cyan points; deep blue night sky with a visible ambient glow; long lenses; reflections on glass and wet asphalt; cool and lonely; clean image with smooth shadows",
+   "zh": "近真人的城市夜景，像高感光数码摄像机拍的；城市灯光是柔和的橙色和青色光点；深蓝夜空带着城市的环境光；长焦；玻璃和湿柏油路上的反光；冷、孤独；画面干净，暗部平滑"
+  },
+  {
+   "id": "R24",
+   "名称": "空间留白恐怖",
+   "来源": "类型片库 G07（文字配方，未出试图）",
+   "适合": "日常空间里的恐怖、走廊、空房间",
+   "en": "cinematic photoreal still; ordinary rooms and corridors framed wide and static with large empty dark areas; dim grey-green ambient light; a curtain moving slightly; a figure small or half-hidden at the edge of frame; muted, quiet, uncanny; clean, noise-free image",
+   "zh": "近真人的电影写实；普通的房间和走廊，宽而固定的画面里留着大片空的暗处；昏暗的灰绿色环境光；窗帘轻轻动；一个人很小，或半藏在画面边缘；安静、压抑、说不出哪里不对；画面干净"
+  },
+  {
+   "id": "R25",
+   "名称": "手绘暖调动画",
+   "来源": "类型片库 G23（文字配方，未出试图）",
+   "适合": "手绘动画、乡野、温情奇幻",
+   "en": "hand-painted 2D animation still; soft watercolor backgrounds full of natural detail; warm natural daylight with gentle shadows; simple, clean character line art with flat, soft shading; nostalgic and airy mood; no text",
+   "zh": "二维手绘动画；水彩质感的背景，自然细节丰富；温暖的自然日光，阴影柔和；人物线条简洁干净，平涂柔和；怀旧、通透；没有文字"
+  },
+  {
+   "id": "R26",
+   "名称": "漫画网点风格化",
+   "来源": "类型片库 G24（文字配方，未出试图）",
+   "适合": "风格化动作、漫画感、年轻向",
+   "en": "stylized 3D animation still with a comic-book print texture; halftone dots and bold ink outlines; slight offset color misregistration; saturated pop colors with graphic, hard-edged shadows; dynamic angles; no text or speech bubbles",
+   "zh": "风格化三维动画，带漫画印刷质感；半调网点和粗墨线描边；轻微的套色错位；高饱和的流行色，阴影硬边、图形化；动感的机位角度；没有文字和对话框"
+  },
+  {
+   "id": "R27",
+   "名称": "武侠写意",
+   "来源": "类型片库 G12（文字配方，未出试图）",
+   "适合": "武侠、竹林、山间客栈",
+   "en": "cinematic wuxia still, near live-action; misty bamboo forests or mountain inns; backlit haze with shafts of light through leaves; costume fabric flowing in the wind; ink-wash palette of muted greens and greys with a single red accent; wide compositions with small figures; clean, noise-free image",
+   "zh": "近真人的武侠电影；雾气里的竹林或山间客栈；逆光的雾，光束从叶子缝里穿下来；衣袂在风里飘；水墨一样的低饱和青绿和灰，只有一点红；宽画面里人很小；画面干净"
+  },
+  {
+   "id": "R28",
+   "名称": "霓虹雨夜浪漫",
+   "来源": "类型片库 G21（文字配方，未出试图）",
+   "适合": "都市爱情、夜戏、狭小空间",
+   "en": "cinematic photoreal still; neon-lit narrow streets and cramped rooms at night; saturated red, green and amber practical light; rain on glass and smoky air; a slight motion-smear, step-printed feeling; close, intimate framing through door frames and windows; clean image",
+   "zh": "近真人的电影写实；霓虹照亮的窄街和逼仄的房间；高饱和的红、绿、琥珀实用光；玻璃上的雨、烟雾弥漫的空气；轻微的拖影、抽帧感；透过门框和窗户的近距离亲密构图；画面干净"
+  },
+  {
+   "id": "R29",
+   "名称": "战争跟拍写实",
+   "来源": "类型片库 G19（文字配方，未出试图）",
+   "适合": "战争、战壕、废墟",
+   "en": "cinematic photoreal war still; overcast daylight, mud, smoke and debris; desaturated earth tones of khaki, grey and brown; eye-level framing close behind soldiers; dust hanging in the air; true-to-life worn fabric and metal; clean, noise-free image",
+   "zh": "近真人的战争片；阴天的光、泥、烟和碎片；卡其、灰、棕的去饱和土色；平视、紧贴在士兵身后的机位；空气里悬着尘；布料和金属有真实的磨损；画面干净"
   }
  ]
 }
