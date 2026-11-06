@@ -205,7 +205,7 @@ def api_request(spec, model, prompt, files, video, dur):
         content += [{"type": "image_url", "image_url": {"url": f"file://{f}"}, "role": "reference_image"} for f in files]
         content.append({"type": "video_url", "video_url": {"url": f"file://{video}"}, "role": "reference_video"})
         return {"_endpoint": "POST https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks",
-                "model": "doubao-seedance-2-5-260628", "content": content, "resolution": spec["resolution"], "ratio": spec["ratio"],
+                "model": os.environ.get("SEEDANCE_API_MODEL", "doubao-seedance-2-5-260628"), "content": content, "resolution": spec["resolution"], "ratio": spec["ratio"],
                 "duration": int(dur), "generate_audio": True, "watermark": False, "omni_reference_task_type": "reference"}
     if model == "hailuo":
         content = [{"type": "text", "text": prompt}]

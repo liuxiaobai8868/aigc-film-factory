@@ -60,8 +60,8 @@ ANCHOR = "人物都是正常的人体结构：两只手各五根手指。"
 SAVIOR = re.compile(r"金手指|系统(发|奖|签到)|签到|认亲|亲孙子|赘婿|战神|龙王|跪地求|求复合|豪门|一夜暴富|神豪|重生复仇|打脸")  # docs/20 第一节：等救主结构
 CORE_KEYS = {"want": "主角想要什么", "need": "他真正需要什么", "choice": "关键时刻他自己做的选择", "cost": "这个选择让他失去什么",
              "image": "能说出主题的那个画面"}
-ACTION_RE = re.compile(r"打斗|出拳|挥拳|一拳|踢向|踢中|飞踢|挥刀|砍向|刺向|格挡|摔倒|扑倒|撞(上|向|飞|倒)|躲闪|翻滚|扭打|掐住|推倒|追赶|追逐|搏斗")  # 武戏：要写受力因果 hit
-VFX_RE = re.compile(r"爆炸|火焰|魔法|法术|能量|光束|光柱|变身|闪电|结界|传送|粒子|发光|光环|符文|召唤")  # 特效：要写七要素 vfx
+ACTION_RE = re.compile(r"打斗|出拳|挥拳|一拳|踢向|踢中|飞踢|挥刀|砍向|刺向|格挡|摔倒|扑倒|撞(上|向|飞|倒)|躲闪|翻滚|扭打|掐住|推倒|追赶|追逐|搏斗|过肩摔|踩塌|砸向|砸碎|甩向|甩飞|一脚踹")  # 武戏：要写受力因果 hit
+VFX_RE = re.compile(r"爆炸|火焰|魔法|法术|能量|光束|光柱|变身|闪电|结界|传送|粒子|发光|光环|符文|召唤|尘浪|水墙|巨浪|孢子|冲击波")  # 特效：要写七要素 vfx
 HIT_KEYS = {"support": "支撑（脚踩在哪、重心在哪）", "force": "发力（从哪发力、朝哪）", "contact": "接触（打在哪、碰到什么）",
             "reaction": "受力（被打的一方怎么动）", "result": "结果（停在什么状态）"}
 VFX_KEYS = {"source": "源点", "direction": "方向", "scale": "尺度（和人比多大）", "speed": "速度", "medium": "介质反馈（空气、水、尘土怎么动）",
@@ -446,9 +446,42 @@ def validate(bible, board, models=("seedance",)):
         W.append("全片每一镜都有台词：至少留一段不靠台词、只用画面和声音讲的戏（docs/20 第二节第 5 条）")
     look_check(bible, board, E, W)
     ai_weak_check(board, W)
+    leak_check(bible, board, E)
+    for c in board.get("clips", []):
+        for k, sh in enumerate(c.get("shots", []), 1):
+            for key in ("allow_occlude", "allow_small"):
+                if key in sh and not isinstance(sh[key], list):
+                    E.append(f"第{c.get('n')}条 镜{k} {key} 要写成名字列表，如 [\"程姐\"]（写 true 会让白模检查崩溃）")
+    cl = board.get("clips", [])
+    for a, b in zip(cl, cl[1:]):
+        if a.get("location") == b.get("location") and not b.get("time_jump") and a.get("model") and b.get("model") and a["model"] != b["model"]:
+            W.append(f"第{a.get('n')}条和第{b.get('n')}条是同一场连续的戏，模型却不同（{a['model']} / {b['model']}）：同一场戏不换模型，换模型只在硬切处（docs/13）")
+    if not bible.get("look") and not board.get("_series", {}).get("mode") == "episode":
+        W.append("设定.json 没有 look：4.0 立项先挑类型卡和时长档位（docs/21），写成 \"look\": {\"genre\": \"G18\", \"tier\": \"1-3\"}")
     if board.get("_series"):
         series_check(bible, board, E, W)
     return E, W
+
+
+def _ref_names():
+    names = set()
+    for c in _cfg("genre_library.json")["类型"]:
+        for r in c["参考"]:
+            names |= {x.strip("《》 ") for x in re.findall(r"《[^》]+》", r)}
+            names |= {x.strip() for x in re.split(r"[；;、/（）()《]", re.sub(r"《[^》]*》", "/", r)) if 2 <= len(x.strip()) <= 12 and "只学" not in x and "顶级" not in x and "改编" not in x}
+    stop = {"爱死机", "docs", "11 #010", "工厂已有", "系列", "照明娱乐式 3D", "高畑勋的作品", "九十年代港片", "天劫外包",  # 说明文字、自家项目
+            "回路", "燃烧", "潜伏", "放逐", "枪火", "异形", "招魂", "封神", "聊斋", "哪吒", "后窗", "侠女", "1917"}  # 常用词、公版题材：不当片名拦
+    return {n for n in names if len(n) >= 2 and n not in stop} | {"高畑勋"}
+
+
+def leak_check(bible, board, E):
+    """类型卡里的导演、影片名只用于研究，不能进任何会编进提示词的字段（docs/21；版权与"不抄"红线）。"""
+    names = _ref_names()
+    data = json.dumps({k: v for k, v in bible.items() if k not in ("look", "core")}, ensure_ascii=False) + \
+        json.dumps([{k: v for k, v in c.items() if k not in ("tension", "signature")} for c in board.get("clips", [])], ensure_ascii=False)
+    hit = sorted(n for n in names if n in data)
+    if hit:
+        E.append(f"数据里出现了参考导演 / 影片名「{'、'.join(hit)}」：它们只能留在研究和故事稿里，提示词里改写成具体的光、色、构图、运动（docs/21）")
 
 
 # ---------------- 剧集模式（docs/22） ----------------
@@ -691,7 +724,8 @@ def items(bible, board):
                                       geo_note=f"「{l['name']}」美术：{art}。",
                                       type="人类视角机位" if hv else "场景主图", rec=REC, deps="—", use=use(f"@loc_{l['name']}"), lock=l["lock"],
                                       en=f"A location reference image for a {film}, no characters: {l['en']}",
-                                      must=l["must_en"] + " The scene is completely uninhabited. Full-frame image with no black bars. No readable text or signs.",
+                                      must=l["must_en"] + " The scene is completely uninhabited. Full-frame image with no black bars. No readable text or signs." +
+                                      (" No giant creatures, robots or machines anywhere in the scene, not even in the far distance or as silhouettes." if any(c.get("kind") == "giant" for c in bible["characters"]) else ""),
                                       check=l.get("check", []) + [f"锚点物都在：{anchors}", "光的方向和冷暖符合光逻辑", "没有人", "没有黑边", "没有文字"],
                                       duty=f"「{l['name']}」：只取空间结构、材质和光；不作首帧，不继承构图。"))
         if l.get("grid"):
@@ -879,13 +913,30 @@ class Clip:
             lk = self.pos(s["look"], t0) if s["look"] in self.c["cast"] else self.pt(s["look"])
             return K.cam(t0, SIZES[size or "中景"][0], p, lk)
         lens, dist, hr = SIZES[size or ("近景" if t == "single" else "中景")]
+        pair = next(((x["fg"], x["subject"], x) for x in self.c["shots"] if x["type"] == "ots"), None)
+        other = None
+        if pair and subj in pair[:2]:  # 正反打：单人镜头的机位和过肩在轴线同一侧，两个人一左一右（docs/21 第五节）
+            other = pair[1] if subj == pair[0] else pair[0]
+            fa, fb = self.pos(pair[0], t0), self.pos(pair[1], t0)
+            po = K.ots(fa, self.height(pair[0]), fb, (fa, fb), back=pair[2].get("back", 0.9), lat=pair[2].get("lat", 0.3))
+            ax_sign = 1.0 if (fb[0] - fa[0]) * (po[1] - fa[1]) - (fb[1] - fa[1]) * (po[0] - fa[0]) >= 0 else -1.0
+
         def front(tt):
             pos, d = self.pos(subj, tt), self.face_dir(subj, tt)
             side = [-d[1], d[0], 0]
+            if other:
+                fa, fb = self.pos(pair[0], tt), self.pos(pair[1], tt)
+                c = [pos[0] + side[0], pos[1] + side[1]]
+                if ((fb[0] - fa[0]) * (c[1] - fa[1]) - (fb[1] - fa[1]) * (c[0] - fa[0]) >= 0) != (ax_sign > 0):
+                    side = [-side[0], -side[1], 0]
             return [pos[0] + d[0] * dist + side[0] * dist * 0.2, pos[1] + d[1] * dist + side[1] * dist * 0.2, pos[2] + h * hr], K.head(pos, h)
         p0, look = front(t0)
         if t == "single" and size not in ("特写", "大特写") and not s.get("center"):  # 黄金分割：人头放在画面 38% / 62%，不放正中（docs/21 第五节）
-            look = golden(p0, look, lens, self.face_dir(subj, t0))
+            if other:
+                op = self.pos(other, t0)
+                look = golden(p0, look, lens, [op[0] - p0[0], op[1] - p0[1], 0.0])
+            else:
+                look = golden(p0, look, lens, self.face_dir(subj, t0))
         if t == "track":
             p1, _ = front(t0 + s["dur"])
             return K.cam(t0, lens, p0, look, p1, t0 + s["dur"])

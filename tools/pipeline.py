@@ -412,15 +412,42 @@ def st_previs_review(proj, d):
     mark(d, "previs_review")
 
 
+def _pack_hashes(proj):
+    """每条投喂包的指纹（提示词 + 白模），用来发现"已经出过片的条，投喂包又变了"。"""
+    out = {}
+    base = os.path.join(proj, "交付", "投喂包")
+    if not os.path.isdir(base):
+        return out
+    for m in sorted(os.listdir(base)):
+        md = os.path.join(base, m)
+        if not os.path.isdir(md):
+            continue
+        for c in sorted(os.listdir(md)):
+            h = hashlib.sha256()
+            for f in ("提示词.txt", "视频1_白模.mp4"):
+                p = os.path.join(md, c, f)
+                if os.path.exists(p):
+                    h.update(open(p, "rb").read())
+            out[f"{m}/{c}"] = h.hexdigest()[:12]
+    return out
+
+
 def st_compile(proj, d):
     fails, waits = [], []
+    prev = (d["pipeline"].get("compile") or {}).get("packs") or d.get("packs_last") or {}
+    if d.get("seedance_api_model"):  # 例：doubao-seedance-2-0-mini-260615（便宜档，docs/13 第八·四节）
+        os.environ["SEEDANCE_API_MODEL"] = d["seedance_api_model"]
     for m in d["video_models"]:
         r = run([PY, "-I", os.path.join(TOOLS, "compile", "compile_video.py"), os.path.join(proj, "交付", "规格单"), "--model", m], check=False)
         fails += [l for l in r.stdout.splitlines() if l.startswith("FAIL")]
     for root, _, files in os.walk(os.path.join(proj, "交付", "投喂包")):
         if "检查.txt" in files:
             waits += [os.path.relpath(root, proj) + "：" + l for l in open(os.path.join(root, "检查.txt"), encoding="utf-8") if l.startswith("WAIT")]
-    d["pipeline"]["compile"] = {"models": d["video_models"], "fails": fails, "waits": [w.strip() for w in waits], "done": now()}
+    packs = _pack_hashes(proj)
+    changed = sorted(k for k, v in packs.items() if prev and prev.get(k) != v)
+    d["packs_last"] = packs
+    d["pipeline"]["compile"] = {"models": d["video_models"], "fails": fails, "waits": [w.strip() for w in waits], "packs": packs,
+                                "changed": changed, "done": now()}
     if waits:
         raise Stop("投喂包还缺定稿图：\n" + "\n".join(waits)[:1500], "回到出图：确认资产都过了目检（status 看 asset_review）")
     if fails:
@@ -490,7 +517,7 @@ def st_report(proj, d):
     b = d["budget"]["images"]
     lines += ["", f"出图预算：批准 {b['approved']} 张，已用 {b['used']} 张。", "",
               f"投喂包：{', '.join(d['video_models'])}，在 `交付/投喂包/`。已知不提交的段落：{d.get('known_fails') or '无'}。", "",
-              ] + _curve(proj) + _composition(proj) + _colors(proj) + _cost(proj) + [
+              ] + _curve(proj) + _composition(proj) + _colors(proj) + _cost(proj) + _packs(proj, d) + [
               "下一步：用户按投喂包出片（或接入出视频接口后由流水线提交），出完把视频交回审片（docs/04 24 分制 + docs/14 4.1 实拍教训）。"]
     open(os.path.join(proj, "logs", "流水线报告.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     mark(d, "report")
@@ -527,6 +554,31 @@ def _colors(proj):
     warn = [l for l in r.stdout.splitlines() if l.startswith("| ") and "反差太低" in l]
     return ["## 色表与明暗", "", "每张场景图、人物图的主色和黑白反差见 `logs/色表.md`，黑白对照见 `logs/黑白对照.jpg`。"] + \
         ([f"反差太低的图：{len(warn)} 张，转黑白后人和背景分不开，考虑重出或改光。"] if warn else []) + [""]
+
+
+def _packs(proj, d):
+    """投喂包这次变了哪些条；已经出过片的条变了要提醒（出片记录里填过第几抽的条）。顺手建好出片记录。"""
+    rec = os.path.join(proj, "logs", "出片记录.md")
+    cs = clips(proj)
+    if cs and not os.path.exists(rec):
+        rows = [f"| {c.replace('第', '').replace('条', '')} | | {d['video_models'][0]} · 交付/投喂包/{d['video_models'][0]}/{c} | | | | |" for c in cs]
+        open(rec, "w", encoding="utf-8").write("\n".join([
+            "# 出片记录", "", "> 每条出一次就记一行：第几抽、审片分（docs/04 24 分制）、判决、丢分点（时间点 · 现象 · 怀疑的控制输入）。同一场连续的戏，出完上一条先 `pipeline.py splice` 再 run。", "",
+            "| 条 | 第几抽 | 模型 / 投喂包 | 审片分 /24 | 判决 | 丢分点 | 写回框架 |", "|---|---|---|---|---|---|---|"] + rows +
+            ["", "一次通过率：— 　平均审片分：—"]) + "\n")
+    ch = (d["pipeline"].get("compile") or {}).get("changed") or []
+    if not ch:
+        return []
+    shot = set()
+    for ln in open(rec, encoding="utf-8"):
+        m = re.match(r"\| ([\d.]+) \| (\S+) \|", ln)
+        if m:
+            shot.add(f"第{m.group(1)}条")
+    warn = sorted({c.split("/", 1)[1].split("_")[0] for c in ch} & shot)
+    out = ["## 投喂包这次变了", "", "、".join(ch) + "。"]
+    if warn:
+        out.append(f"**注意**：{'、'.join(warn)} 已经出过片，投喂包变了：用新包重出前先对比改了什么，旧片段保留。")
+    return out + [""]
 
 
 def _cost(proj):
@@ -688,13 +740,29 @@ def cmd_status(proj):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "selftest", "qc", "splice", "episode"])
+    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "new", "selftest", "qc", "splice", "episode"])
     ap.add_argument("project")
     ap.add_argument("args", nargs="*")
     ap.add_argument("--until", choices=STAGES)
     ap.add_argument("--update", action="store_true", help="selftest：确认新产物正确后更新标准产物")
     a = ap.parse_args()
+    if a.cmd == "selftest" and a.project == "all":  # 两套样例都跑：单片 + 剧集
+        return max(cmd_selftest(os.path.join(ROOT, "examples", e), a.update) for e in ("样例-便利店", "样例-剧集"))
     proj = os.path.abspath(a.project)
+    if a.cmd == "new":  # 单片 JSON 模式建项目（docs/18）：production.json + 立项书模板 + logs
+        title = a.args[0] if a.args else os.path.basename(proj)
+        os.makedirs(os.path.join(proj, "logs"), exist_ok=True)
+        d = load(proj)
+        d.update(project=title, video_models=d.get("video_models") or ["seedance", "kling", "hailuo", "wan"])
+        save(proj, d)
+        lx = os.path.join(proj, "00-立项书.md")
+        if not os.path.exists(lx):
+            open(lx, "w", encoding="utf-8").write(open(os.path.join(ROOT, "templates", "00-立项书.md"), encoding="utf-8").read().replace("<项目名>", title))
+        fq = os.path.join(proj, "logs", "框架问题.md")
+        if not os.path.exists(fq):
+            open(fq, "w", encoding="utf-8").write("# 框架问题\n\n| # | 日期 | 阶段 | 问题 | 建议 | 状态 |\n|---|---|---|---|---|---|\n")
+        print(f"已建 {os.path.relpath(proj, ROOT)}（production.json、00-立项书.md、logs/）。NEXT：按 docs/09 第零节的入口走：故事确认后 `confirm {os.path.relpath(proj, ROOT)} story`")
+        return 0
     if a.cmd == "init":
         title, short = a.args
         os.makedirs(os.path.join(proj, "预演规格"), exist_ok=True)
