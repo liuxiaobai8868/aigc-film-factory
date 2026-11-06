@@ -38,6 +38,43 @@ LIMITS = {  # docs/13 第一节，2026-11 官方
     "wan": {"名称": "万相 3.0（参考生视频）", "dur": (2, 15), "images": 10, "videos": 5, "video_total": 15, "chars": 20000, "lean_target": 1500},
 }
 SPLIT_MAX = {"seedance": 30, "kling": 30, "hailuo": 15, "wan": 15}
+AUDIO_LIM = {"seedance": (10, 30, 0, 30), "kling": (3, 90, 5, 30), "hailuo": (3, 15, 0, 15), "wan": (5, 15, 0, 15)}  # 段数、总秒数、单段下限、单段上限（docs/13）
+AUDIO_REF = {"seedance": "@音频{}", "kling": "音频{}", "hailuo": "<Audio {}>", "wan": "音频{}"}
+
+
+def audio_secs(path):
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path], capture_output=True, text=True)
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+def pick_audio(spec, model, shots):
+    """音色参考：只取这一段里开口的人，按开口顺序取，超过该家上限的不放（检查.txt 里提醒）。"""
+    n_max, tot_max, lo, hi = AUDIO_LIM[model]
+    got, notes, tot = [], [], 0.0
+    talk = "|".join(re.split(r"[；。]", seg)[-1] for sh in shots for seg in re.findall(r"([^{}]*)\{", sh["body"]))  # 每句台词前面那一小段：谁说
+    for a in spec.get("audio", []):
+        if a["name"] not in talk:
+            continue
+        src = os.path.join(spec["_dir"], a["file"])
+        if not os.path.exists(src):
+            notes.append(f"WAIT  还缺音色参考 {a['file']}（流水线 sound 阶段生成）")
+            continue
+        sec = audio_secs(src)
+        if not lo <= sec <= hi:
+            notes.append(f"WARN  {a['name']} 的音色参考 {sec:.1f} 秒，不在本模型要求的 {lo}–{hi} 秒，没有放进去")
+        elif len(got) >= n_max or tot + sec > tot_max:
+            notes.append(f"WARN  音色参考超过本模型上限（{n_max} 段、总 {tot_max} 秒），{a['name']} 的没有放进去，靠提示词里的音色描述")
+        else:
+            got.append(dict(a, src=src, secs=sec, ref=AUDIO_REF[model].format(len(got) + 1)))
+            tot += sec
+    return got, notes
+
+
+def audio_duty(a):
+    return f"{a['ref']} 是「{a['name']}」的音色参考：只取音色、音高、语调和口音，不取里面说的内容、语速和背景声；台词只说本条写的那几句。"
 
 
 def fmt(x):
@@ -163,6 +200,7 @@ def build_prompt(spec, model, style, part):
             out.append(short_duty(a, ref))
     vref = ref_name(model, "video", 1)
     out.append(previs_duty(model, spec, vref))
+    out += [audio_duty(a) for a in spec.get("_audio", [])]
     out.append("角色外貌、服饰、位置、台词互不交换；画面质感从第一帧开始就按下面的质感描述。")
     out += ["", convert_refs(spec["count"], model, len(imgs))]
     out += ["", "【场景上下文】" if model == "seedance" else "【总体设定】", spec["context"], spec["two_worlds"], spec["style"]]
@@ -204,6 +242,7 @@ def api_request(spec, model, prompt, files, video, dur):
         content = [{"type": "text", "text": prompt}]
         content += [{"type": "image_url", "image_url": {"url": f"file://{f}"}, "role": "reference_image"} for f in files]
         content.append({"type": "video_url", "video_url": {"url": f"file://{video}"}, "role": "reference_video"})
+        content += [{"type": "audio_url", "audio_url": {"url": f"file://{a['pack']}"}, "role": "reference_audio"} for a in spec.get("_audio", [])]
         return {"_endpoint": "POST https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks",
                 "model": os.environ.get("SEEDANCE_API_MODEL", "doubao-seedance-2-5-260628"), "content": content, "resolution": spec["resolution"], "ratio": spec["ratio"],
                 "duration": int(dur), "generate_audio": True, "watermark": False, "omni_reference_task_type": "reference"}
@@ -247,6 +286,16 @@ def ui_params(spec, model, dur, n_img):
     return "\n".join(rows) + "\n"
 
 
+def audio_upload(spec, model):
+    auds = spec.get("_audio", [])
+    if not auds:
+        return []
+    names = "、".join(f"音频{i}_{a['name']}.wav（{a['ref']}）" for i, a in enumerate(auds, 1))
+    tip = {"kling": "放在音色 / 声音参考入口，绑定到对应角色", "hailuo": "参考音频要和图、视频一起传", "wan": "参考音频合计 ≤ 15 秒",
+           "seedance": "参考音频合计 ≤ 30 秒"}[model]
+    return [f"音色参考：最后上传 {names}；{tip}。只取音色，不取内容"]
+
+
 def compile_one(spec, model, style, out_root):
     lim = LIMITS[model]
     base = spec["_dir"]
@@ -280,6 +329,12 @@ def compile_one(spec, model, style, out_root):
             else:  # 图还没出：先占位，出完图重编一次即可
                 open(dst + ".缺图.txt", "w", encoding="utf-8").write(f"等待定稿图：{a['file']}\n")
             files.append(dst)
+        auds, anotes = pick_audio(spec, model, shots)
+        for k2, a in enumerate(auds, 1):
+            dst = os.path.join(d, f"音频{k2}_{a['name']}.wav")
+            shutil.copy2(a["src"], dst)
+            a["pack"] = dst
+        spec = dict(spec, _audio=auds)
         video = os.path.join(d, "视频1_白模.mp4")
         if not os.path.exists(previs):
             open(video + ".缺白模.txt", "w", encoding="utf-8").write(f"等待白模：{spec['previs']}\n")
@@ -295,10 +350,12 @@ def compile_one(spec, model, style, out_root):
             if fallback:
                 notes.append(f"WARN  镜头 {fallback} 没有结构化数据（项目不是 设定.json + 分镜.json 写的），这几镜退回中文正文，不是{lim['名称']}官方格式；改用 docs/19 的数据格式可得到完整官方格式")
         open(os.path.join(d, "提示词.txt"), "w", encoding="utf-8").write(prompt + "\n")
-        open(os.path.join(d, "界面参数.txt"), "w", encoding="utf-8").write(ui_params(spec, model, t1 - t0, len(files)))
+        open(os.path.join(d, "界面参数.txt"), "w", encoding="utf-8").write(ui_params(spec, model, t1 - t0, len(files)) + "".join(x + "\n" for x in audio_upload(spec, model)))
         json.dump(api_request(spec, model, prompt, files, video, t1 - t0), open(os.path.join(d, "api_request.json"), "w", encoding="utf-8"),
                   ensure_ascii=False, indent=1)
-        chk = check_limits(spec, model, prompt, t1 - t0, len(spec["assets"]), style) + notes + (tail_note if k == 1 else [])
+        chk = check_limits(spec, model, prompt, t1 - t0, len(spec["assets"]), style) + notes + anotes + (tail_note if k == 1 else [])
+        if auds:
+            chk.append(f"PASS  音色参考 {len(auds)} 段，共 {sum(a['secs'] for a in auds):.1f} 秒（{'、'.join(a['name'] for a in auds)}）")
         missing = [a["file"] for a in assets if not os.path.exists(os.path.join(base, a["file"]))]
         if missing:
             chk.append(f"WAIT  还缺 {len(missing)} 张定稿图：{'、'.join(os.path.basename(m) for m in missing)}；出完图重编一次")

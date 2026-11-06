@@ -246,6 +246,8 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
             ve = {v: texts["VOICE_EN"][v] for v in c.get("voices", []) if v in texts["VOICE_EN"]}
             if ve:
                 spec["voice_en"] = ve
+        if c.get("audio"):
+            spec["audio"] = c["audio"]
         for key in ("style_en", "summary_en", "splice_in"):
             if c.get(key):
                 spec[key] = c[key]

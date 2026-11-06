@@ -1031,6 +1031,97 @@ class Clip:
                     style_en=self.style_en)
 
 
+# ---------------- 声音资产（docs/18 sound 阶段、crew/09） ----------------
+
+VOICE_DEFAULT = "嗯，我在。这件事，我们慢慢说。"
+
+
+def _seed(name):
+    return sum(ord(ch) * (i + 1) for i, ch in enumerate(name)) % 100000
+
+
+def voice_mode(proj):
+    """音色参考：默认 off（模型按音色锁的文字自己出声，用户实测比本地 TTS 自然）；
+    "user" = 用户提供真人录音（声音/音色_<角色>.wav）；"tts" = 用户明确要本地 TTS。production.json 的 voice_refs。"""
+    root = os.path.dirname(proj) if series_kind(proj) == "episode" else proj
+    p = os.path.join(root, "production.json")
+    v = json.load(open(p, encoding="utf-8")).get("voice_refs", "off") if os.path.exists(p) else "off"
+    return v if v in ("user", "tts") else "off"
+
+
+def sound_items(bible, board, voices="off"):
+    """每个场景一段环境底、可选配乐（后期铺底）；voices 不是 off 时，每个开口的角色再加一段音色参考（喂四家视频模型）。"""
+    cm = char_map(bible)
+    lines, used = {}, {}
+    for c in board.get("clips", []):
+        for sh in c.get("shots", []):
+            ln = sh.get("line")
+            if ln:
+                b = cm.get(ln["who"], {}).get("_base", ln["who"])
+                lines.setdefault(b, []).append(ln["text"])
+                used.setdefault(b, []).append(str(c.get("n")))
+    out = []
+    for ch in bible.get("characters", []) if voices != "off" else []:
+        n = ch["name"]
+        if n not in lines or not ch.get("voice"):
+            continue
+        txt = ch.get("voice_sample")
+        if not txt:
+            acc = ""
+            for t in lines[n]:  # 5–9 秒：可灵要求 ≥ 5 秒；海螺、万相总共只收 15 秒，三个人都要放得下
+                if len(SEP.sub("", acc)) >= 12 or len(SEP.sub("", acc + t)) > 24:
+                    break
+                acc += ("" if not acc else "\n") + t
+            txt = acc if len(SEP.sub("", acc)) >= 10 else VOICE_DEFAULT
+        who = ch.get("lock", "").split("：", 1)[-1].split("，")[0] if ch.get("kind") != "voice" else ""
+        out.append({"kind": "voice", "name": n, "file": f"声音/音色_{n}.wav", "dur": [5, 9] if voices == "tts" else [3, 30], "clips": sorted(set(used[n]), key=used[n].index),
+                    "tool": "local-tts design_voice" if voices == "tts" else "用户提供的真人录音（5–30 秒，干净、无配乐，自然说话）",
+                    "args": {"voice_description": (who + "；" if who else "") + ch["voice"], "text": txt, "language": "chinese",
+                             "seed": _seed(n), "temperature": 0.7, "title": f"音色_{n}"}})
+    for loc in bible.get("locations", []):
+        sfx = []
+        for c in board.get("clips", []):
+            if c.get("location") != loc["name"]:
+                continue
+            for sh in c.get("shots", []):
+                for sd in sh.get("sound", []):
+                    if isinstance(sd, dict) and sd.get("source") == "画外" and sd.get("en") and sd["en"] not in sfx \
+                            and not re.search(r"voice|says|announce|speech|drain|ting|silence|beep|crash|slam|scream", sd["en"], re.I):  # 铺底只要持续的环境声，不要人声和单次事件
+                        sfx.append(sd["en"])
+        if not any(c.get("location") == loc["name"] for c in board.get("clips", [])):
+            continue
+        out.append({"kind": "ambience", "name": loc["name"], "file": f"声音/环境_{loc['name']}.wav", "dur": [8, 40],
+                    "tool": "audio-studio generate_audio",
+                    "args": {"audio_type": "sfx", "duration_seconds": 20, "title": f"环境_{loc['name']}",
+                             "prompt": loc.get("ambience_en") or (f"Continuous background ambience, no music, no voices: {loc['en']} " + ("; ".join(sfx[:4]) + "." if sfx else "")),
+                             "sound_space": "wide stereo room tone, distant, steady, loopable"}})
+    if bible.get("score_en"):
+        out.append({"kind": "score", "name": "配乐", "file": "声音/配乐.wav", "dur": [30, 400], "tool": "audio-studio generate_audio",
+                    "args": {"audio_type": "music", "duration_seconds": 120, "title": "配乐", "prompt": bible["score_en"]}})
+    return out
+
+
+def build_sound(proj):
+    bible, board = load(proj)
+    items = sound_items(bible, board, voice_mode(proj))
+    L = [f"# 《{bible['title']}》声音资产", "",
+         "> 流水线生成，不要手改。环境底和配乐用本机 audio-studio 的 generate_audio（免费），**只在后期铺底**（`tools/post.py --ambience`），生成视频时不要配乐。",
+         "> **对白音色**默认交给视频模型按音色锁的文字自己出（用户实测：本地 TTS 像配音、会带方言腔，不如模型自带的自然）。只有 production.json 写 `voice_refs: \"user\"`（真人录音）或 `\"tts\"` 时才有音色参考，并喂给四家模型。",
+         "> 生成后存成 48 kHz WAV 放到 `交付/` 下对应路径，再跑 run；流水线只做技术检查（时长、响度、削波），**真正好不好听要人听**。", "",
+         "| 序 | 类型 | 名称 | 文件 | 用在 | 工具 |", "|---|---|---|---|---|---|"]
+    kz = {"voice": "音色参考", "ambience": "环境底", "score": "配乐"}
+    for i, it in enumerate(items, 1):
+        L.append(f"| {i} | {kz[it['kind']]} | {it['name']} | {it['file']} | {('第 ' + '、'.join(it['clips']) + ' 条') if it.get('clips') else '后期'} | {it['tool']} |")
+    L.append("")
+    for i, it in enumerate(items, 1):
+        L += [f"### {i}｜{kz[it['kind']]}｜{it['name']}", "", f"- 文件：`交付/{it['file']}`（时长 {it['dur'][0]}–{it['dur'][1]} 秒）", f"- 工具：{it['tool']}，参数：", "",
+              "```json", json.dumps(it["args"], ensure_ascii=False, indent=1), "```", ""]
+    os.makedirs(os.path.join(proj, "交付"), exist_ok=True)
+    open(os.path.join(proj, "交付", "02-声音资产.md"), "w", encoding="utf-8").write("\n".join(L) + "\n")
+    json.dump(items, open(os.path.join(proj, "交付", "声音清单.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    return len(items), []
+
+
 def build_assets(proj):
     bible, board = load(proj)
     E, W = validate(bible, board, models_of(proj))
@@ -1089,6 +1180,9 @@ def build_specs(proj):
     its = items(bible, board)
     idx = {it["tag"] for it in its}
     loc_index = {l["name"]: i for i, l in enumerate(bible["locations"])}
+    sp = os.path.join(proj if series_kind(proj) != "episode" else os.path.dirname(proj), "production.json")
+    on = json.load(open(sp, encoding="utf-8")).get("sound_assets", True) if os.path.exists(sp) else True
+    voiced = {it["name"] for it in sound_items(bible, board, voice_mode(proj)) if it["kind"] == "voice"} if on else set()
     clips, boxes = [], []
     seen, prev = set(), None
     for c in board["clips"]:
@@ -1101,6 +1195,14 @@ def build_specs(proj):
         style_zh = f"质感：{world}（{wr}）：{rz[wr]['zh']}；人物（{pr}）：{rz[pr]['zh']}。"
         clips.append(cl.build(idx))
         clips[-1]["style_zh"] = style_zh
+        cm = char_map(bible)
+        spk = []
+        for sh in c["shots"]:
+            if sh.get("line"):
+                b = cm.get(sh["line"]["who"], {}).get("_base", sh["line"]["who"])
+                if b not in spk:
+                    spk.append(b)
+        clips[-1]["audio"] = [{"tag": f"@voice_{b}", "file": f"声音/音色_{b}.wav", "name": b, "kind": "voice"} for b in spk if b in voiced]
         if prev and prev["location"] == c["location"] and not c.get("time_jump"):  # 连续的戏：上一条出片后的尾帧接进这一条（docs/07）
             clips[-1]["splice_in"] = {"file": f"衔接/第{prev['n']}条_尾帧.png", "from": prev["n"]}
         prev = c
@@ -1120,7 +1222,7 @@ def build_specs(proj):
 
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[1] not in ("check", "assets", "specs", "stress"):
+    if len(sys.argv) != 3 or sys.argv[1] not in ("check", "assets", "specs", "stress", "sound"):
         sys.exit(__doc__)
     proj = os.path.abspath(sys.argv[2])
     try:
@@ -1132,7 +1234,7 @@ def main():
                 print("ERROR", e)
             print("通过" if not E else f"{len(E)} 处错误")
             sys.exit(1 if E else 0)
-        n, W = {"assets": build_assets, "specs": build_specs, "stress": build_stress}[sys.argv[1]](proj)
+        n, W = {"assets": build_assets, "specs": build_specs, "stress": build_stress, "sound": build_sound}[sys.argv[1]](proj)
         for w in W:
             print("WARN ", w)
         print(f"完成：{n}")

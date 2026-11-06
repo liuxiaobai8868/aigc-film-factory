@@ -29,9 +29,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
 PY = sys.executable
-STAGES = ["confirm", "assets", "images", "asset_review", "stress", "specs", "previs", "check_spec", "geometry", "framesheets",
+STAGES = ["confirm", "assets", "images", "asset_review", "sound", "stress", "specs", "previs", "check_spec", "geometry", "framesheets",
           "previs_review", "compile", "publish", "report"]
-SEASON_STAGES = ["confirm", "assets", "images", "asset_review"]  # 剧集模式：剧目录只出全季资产，其余逐集跑（docs/22）
+SEASON_STAGES = ["confirm", "assets", "images", "asset_review", "sound"]  # 剧集模式：剧目录只出全季资产，其余逐集跑（docs/22）
 sys.path.insert(0, TOOLS)
 
 
@@ -170,6 +170,12 @@ def _season(fn):
             save(root, sd)
             raise Stop(f"（全季资产，剧目录 {os.path.relpath(root, ROOT)}）{e}", e.next_step.replace("<项目>", os.path.relpath(root, ROOT)))
         save(root, sd)
+        if fn is st_sound:
+            src, dst = os.path.join(root, "交付", "声音"), os.path.join(proj, "交付", "声音")
+            if os.path.isdir(src):
+                os.makedirs(dst, exist_ok=True)
+                for f in os.listdir(src):
+                    shutil.copy2(os.path.join(src, f), os.path.join(dst, f))
         if fn is st_asset_review:
             src, dst = os.path.join(root, "交付", "参考图定版"), os.path.join(proj, "交付", "参考图定版")
             os.makedirs(dst, exist_ok=True)
@@ -263,6 +269,65 @@ def st_asset_review(proj, d):
         raise Stop("有图判了 fix：" + "；".join(f"{n} {it['tag']}（{note}）" for n, it, note in fixes),
                    "改 build_assets.py 里这张图的提示词，然后 `pipeline.py redo <项目> <序号>`，再 run（会占出图预算）")
     mark(d, "asset_review")
+
+
+def audio_stats(path):
+    """时长、平均响度、峰值（ffmpeg volumedetect）。"""
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True)
+    dur = re.search(r"Duration: (\d+):(\d+):([\d.]+)", r.stderr)
+    mean = re.search(r"mean_volume: (-?[\d.]+) dB", r.stderr)
+    peak = re.search(r"max_volume: (-?[\d.]+) dB", r.stderr)
+    sec = int(dur.group(1)) * 3600 + int(dur.group(2)) * 60 + float(dur.group(3)) if dur else 0.0
+    return sec, float(mean.group(1)) if mean else -99.0, float(peak.group(1)) if peak else -99.0
+
+
+def st_sound(proj, d):
+    """声音资产（crew/09）：开口角色的音色参考（喂视频模型）+ 场景环境底 / 配乐（后期铺底）。本机免费生成，流水线只做技术检查。
+    production.json 写 "sound_assets": false 可关掉。"""
+    if d.get("sound_assets") is False or not json_mode(proj):
+        mark(d, "sound", skipped=True)
+        return
+    run([PY, "-I", os.path.join(TOOLS, "storyboard.py"), "sound", proj])
+    items = json.load(open(os.path.join(proj, "交付", "声音清单.json"), encoding="utf-8"))
+    base = os.path.join(proj, "交付")
+    os.makedirs(os.path.join(base, "声音"), exist_ok=True)
+    missing = [it for it in items if not os.path.exists(os.path.join(base, it["file"]))]
+    if missing and offline(d):  # 自测：固定的占位音（音色 6 秒，其余取下限）
+        for it in missing:
+            sec = 6 if it["kind"] == "voice" else it["dur"][0]
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"sine=frequency=330:duration={sec}", "-ar", "48000",
+                            "-af", "volume=-12dB", os.path.join(base, it["file"])], check=True)
+        missing = []
+    user_v = [it for it in missing if it["kind"] == "voice" and not it["tool"].startswith("local-tts")]
+    if user_v:
+        raise Stop("voice_refs 设成了 user，还缺真人录音：" + "、".join(it["file"] for it in user_v),
+                   "请用户提供这几个角色的真人录音（5–30 秒，正常说话、干净、没有配乐，授权可用），放到对应路径后重跑 run；"
+                   "不想用了就把 production.json 的 voice_refs 改回 off")
+    if missing:
+        raise Stop(f"还缺 {len(missing)} 段声音：" + "、".join(it["file"] for it in missing),
+                   "按 交付/02-声音资产.md 每一项的工具和参数生成（本机免费，不占预算）：环境底和配乐用 audio-studio 的 generate_audio"
+                   "（再用 process_audio 转 48 kHz、环境底做成无缝循环）；voice_refs 是 tts 时音色参考用 local-tts 的 design_voice；"
+                   "存到表里的路径后重跑 run。告诉用户：这些声音没人听过，请试听，不满意就 `review <项目> 声:<文件名> fix <原因>`")
+    bad = []
+    for it in items:
+        p = os.path.join(base, it["file"])
+        sec, mean, peak = audio_stats(p)
+        lo, hi = it["dur"]
+        if not lo <= sec <= hi:
+            bad.append(f"{it['file']} 时长 {sec:.1f} 秒，要 {lo}–{hi} 秒")
+        if mean < -40:
+            bad.append(f"{it['file']} 平均响度 {mean:.0f} dB，几乎没声音")
+        if peak > -0.1:
+            bad.append(f"{it['file']} 峰值 {peak:.1f} dB，削波")
+        k = "声:" + os.path.basename(it["file"])
+        h = sha(p)
+        if d["reviews"].get(k, {}).get("hash") != h:
+            d["reviews"][k] = {"status": "pass" if offline(d) else "未试听", "hash": h}
+        if d["reviews"][k]["status"] == "fix":
+            bad.append(f"{it['file']} 判了 fix：{d['reviews'][k].get('note', '')}")
+    if bad:
+        raise Stop("声音资产不合格：\n  " + "\n  ".join(bad), "按提示重生成或用 process_audio 裁剪、归一化后覆盖原文件，再 run（判 fix 的改好后 `review <项目> 声:<文件名> pass`）")
+    mark(d, "sound", items=len(items), unheard=[k for k, v in d["reviews"].items() if k.startswith("声:") and v["status"] == "未试听"])
 
 
 def st_stress(proj, d):
@@ -517,7 +582,7 @@ def st_report(proj, d):
     b = d["budget"]["images"]
     lines += ["", f"出图预算：批准 {b['approved']} 张，已用 {b['used']} 张。", "",
               f"投喂包：{', '.join(d['video_models'])}，在 `交付/投喂包/`。已知不提交的段落：{d.get('known_fails') or '无'}。", "",
-              ] + _curve(proj) + _composition(proj) + _colors(proj) + _cost(proj) + _packs(proj, d) + [
+              ] + _curve(proj) + _composition(proj) + _colors(proj) + _sound(proj, d) + _cost(proj) + _packs(proj, d) + [
               "下一步：用户按投喂包出片（或接入出视频接口后由流水线提交），出完把视频交回审片（docs/04 24 分制 + docs/14 4.1 实拍教训）。"]
     open(os.path.join(proj, "logs", "流水线报告.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     mark(d, "report")
@@ -554,6 +619,15 @@ def _colors(proj):
     warn = [l for l in r.stdout.splitlines() if l.startswith("| ") and "反差太低" in l]
     return ["## 色表与明暗", "", "每张场景图、人物图的主色和黑白反差见 `logs/色表.md`，黑白对照见 `logs/黑白对照.jpg`。"] + \
         ([f"反差太低的图：{len(warn)} 张，转黑白后人和背景分不开，考虑重出或改光。"] if warn else []) + [""]
+
+
+def _sound(proj, d):
+    s = d["pipeline"].get("sound") or {}
+    if s.get("skipped") or not s:
+        return []
+    un = s.get("unheard") or []
+    return ["## 声音资产", "", f"{s.get('items', 0)} 段，清单见 `交付/02-声音资产.md`；环境底和配乐用于后期铺底；对白音色由视频模型按音色锁出（有真人录音时才接音色参考）。"] + \
+        ([f"**还没人听过**：{'、'.join(x[2:] for x in un)}。请试听，不满意 `review <项目> 声:<文件名> fix <原因>`。"] if un else []) + [""]
 
 
 def _packs(proj, d):
@@ -608,7 +682,7 @@ def _curve(proj):
 
 
 FUNCS = {s: globals()["st_" + s] for s in STAGES}
-for _s in ("assets", "images", "asset_review"):
+for _s in ("assets", "images", "asset_review", "sound"):
     FUNCS[_s] = _season(FUNCS[_s])
 
 

@@ -88,6 +88,10 @@ def hailuo(spec, part, short_duty_fn):
     proxy = re.sub(r"[\u4e00-\u9fff]+", "", proxy)  # 剩下的中文说明不进英文提示词
     defs.append("<Video 1>: grey whitebox previs of this clip. It defines only the camera path, cut points, framing, blocking and the order "
                 f"of events; its grey boxes, colored proxy cylinders and neutral light are not carried over. Proxies: {proxy}.")
+    for a in spec.get("_audio", []):  # 音色参考（sound 阶段生成）
+        who = label.get(a["name"], a["name"])
+        defs.append(f"{a['ref']}: voice of {who} (timbre and accent only, not its words).")
+        keep.append(f"{a['ref']}: attribute_transfer — voice of {who}")
     keep.append("<Video 1>: weak_reference — camera path, cut timing, framing and blocking only")
 
     desc = [f"Live-action cinematic footage. {spec.get('style_en', '')}".strip(),
@@ -176,6 +180,7 @@ def kling(spec, part, short_duty_fn):
         out.append(short_duty_fn(a, f"@Image{i}").replace(" 是", " 定义", 1))
     out.append(f"@Video1 是本条的白模预演：按 @Video1 逐镜头、逐切点复刻镜头路线、切点、构图和人物走位（Recreate @Video1 shot-for-shot and "
                f"cut-for-cut）；@Video1 里的灰色方块、识别色圆柱和中性光都不进成片。识别色：{spec['previs_colors']}。")
+    out += [f"{a['ref']} 定义「{a['name']}」的音色：只取音色、音高、语调和口音，不取内容和背景声。" for a in spec.get("_audio", [])]
     cuts = [fmt(sh["t0"] - t0) for sh in shots[1:]]
     out += ["", "[Overall Settings 总体设定]", f"场景与质感：{spec['context']}{spec['style']}",
             f"视觉风格：{spec['two_worlds']}",
@@ -207,6 +212,7 @@ def wan(spec, part, short_duty_fn):
         out.append(short_duty_fn(a, f"图{i}"))
     out.append(f"参考视频1的运镜方式、镜头切换节奏、构图和人物走位，逐个分镜对齐；视频1是灰色白模，它的灰色方块、识别色圆柱和中性光不出现在成片里。"
                f"识别色：{spec['previs_colors']}。")
+    out += [f"{a['ref']}是「{a['name']}」的音色参考：只取音色、音高、语调和口音，不取内容和背景声。" for a in spec.get("_audio", [])]
     out += ["", "分镜（每个分镜一个机位、一个主运镜，按时间硬切）："]
     for k, sh in enumerate(shots, 1):
         a, b = sh["t0"] - t0, sh["t1"] - t0

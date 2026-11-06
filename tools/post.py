@@ -13,6 +13,7 @@
   --hold N   剪掉结尾 N 帧后，用最后一张好帧补回 N 帧，时长不变（对白、卡点不错位）
   按 BT.601 解码、BT.709 输出（Seedance 的 mp4 按 601 解码颜色才对）；lanczos 放大到 --size 并轻微锐化；24 帧。
   --audio keep 保留片段自带的声音（默认）；mute 静音；给一个音频文件就整轨替换（2.5 常混进不要的配乐）。
+  --ambience  每条下面按 分镜.json 的场景铺一层环境底（交付/声音/环境_<场景>.wav，sound 阶段生成），压在 -20 dB，接缝处不断声。
 输出 交付/成片/<片名>_粗剪.mp4，切点清单写进 logs/粗剪记录.md。旧文件不覆盖，同名时加序号。
 """
 import argparse
@@ -69,6 +70,8 @@ def main():
     ap.add_argument("--audio", default="keep")
     ap.add_argument("--size", default="1920x1080")
     ap.add_argument("--out")
+    ap.add_argument("--ambience", action="store_true")
+    ap.add_argument("--bed-db", type=float, default=-20.0)
     a = ap.parse_args()
     proj = os.path.abspath(a.project)
     src = a.src if os.path.isabs(a.src) else os.path.join(proj, a.src)
@@ -83,7 +86,13 @@ def main():
     log = ["# 粗剪记录", "", f"参数：剪头 {a.head} 帧，剪尾 {a.tail} 帧，补尾 {a.hold} 帧，声音 {a.audio}，{a.size}，{FPS} 帧", "",
            "| 条 | 文件 | 原时长 | 成片时长 | 在成片中的起止 |", "|---|---|---|---|---|"]
     parts, t = [], 0.0
+    locs = {}
+    bp = os.path.join(proj, "分镜.json")
+    if a.ambience and os.path.exists(bp):
+        locs = {str(c["n"]): c.get("location") for c in json.load(open(bp, encoding="utf-8")).get("clips", [])}
     for n, f in items:
+        bed = os.path.join(proj, "交付", "声音", f"环境_{locs.get(n)}.wav") if locs.get(n) else None
+        bed = bed if bed and os.path.exists(bed) else None
         dur, frames, fps, has_a = probe(f)
         start = a.head / fps
         end = max(start + 0.5, dur - a.tail / fps)
@@ -94,7 +103,15 @@ def main():
         seg = end - start + a.hold / FPS
         out = os.path.join(tmp, f"{n}.mp4")
         cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", f]
-        if a.audio == "keep" and has_a:
+        if bed and a.audio in ("keep", "mute"):
+            bf = f"aresample=48000,atrim=0:{seg:.4f},volume={a.bed_db}dB"
+            if a.audio == "keep" and has_a:
+                af = f"atrim=start={start:.4f}:end={end:.4f},asetpts=PTS-STARTPTS,aresample=48000,apad=whole_dur={seg:.4f}"
+                fc = f"[0:v]{vf}[v];[0:a]{af}[a0];[1:a]{bf}[b];[a0][b]amix=inputs=2:duration=first:normalize=0[a]"
+            else:
+                fc = f"[0:v]{vf}[v];[1:a]{bf},apad=whole_dur={seg:.4f}[a]"
+            cmd += ["-stream_loop", "-1", "-i", bed, "-filter_complex", fc, "-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-t", f"{seg:.4f}"]
+        elif a.audio == "keep" and has_a:
             af = f"atrim=start={start:.4f}:end={end:.4f},asetpts=PTS-STARTPTS,aresample=48000,apad=whole_dur={seg:.4f}"
             cmd += ["-filter_complex", f"[0:v]{vf}[v];[0:a]{af}[a]", "-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
         else:
@@ -106,7 +123,7 @@ def main():
         if r.returncode:
             sys.exit(f"第{n}条处理失败：{r.stderr[-600:]}")
         real = probe(out)[0]
-        log.append(f"| {n} | {os.path.basename(f)} | {dur:.2f} 秒 | {real:.2f} 秒 | {t:.2f}–{t + real:.2f} 秒 |")
+        log.append(f"| {n} | {os.path.basename(f)}{'（铺环境底）' if bed else ''} | {dur:.2f} 秒 | {real:.2f} 秒 | {t:.2f}–{t + real:.2f} 秒 |")
         t += real
         parts.append(out)
     lst = os.path.join(tmp, "list.txt")
