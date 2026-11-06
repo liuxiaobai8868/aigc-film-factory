@@ -106,7 +106,7 @@ def subjects(body):
     return main, fg, partial
 
 
-rows, axis_sides = [], {}
+rows, axis_sides, comp = [], {}, []  # comp：构图统计（不拦，docs/21 第五节）
 dg = bpy.context.evaluated_depsgraph_get()
 for sh in spec["shots"]:
     L = sh["t1"] - sh["t0"]
@@ -127,6 +127,13 @@ for sh in spec["shots"]:
             if inside(o, cp):
                 notes.append(f"{t:.1f}s 镜头在「{o.name}」里面")
                 level = "FAIL"
+        if frac == 0.5 and main and sh.get("struct", {}).get("type") in ("single", "ots", "track"):
+            hd0 = bpy.data.objects[main[0] + "_head"].matrix_world.translation
+            v0 = world_to_camera_view(sc, cam, hd0)
+            if v0.z > 0:
+                eye = abs(cp.z - hd0.z) < 0.35
+                mid = 0.43 <= v0.x <= 0.57
+                comp.append((sh, main[0], v0.x, eye, mid))
         for p in main:
             head = bpy.data.objects[p + "_head"].matrix_world.translation
             body = bpy.data.objects[p + "_body"]
@@ -186,4 +193,9 @@ lines = [f"# 白模几何检查：第 {spec['clip']} 条 {spec['title']}", "",
          "| 镜头 | 时间 | 结果 | 说明 |", "|---|---|---|---|"]
 for sh, level, notes in rows:
     lines.append(f"| {sh['id']} {sh['name']} | {sh['t0']:g}–{sh['t1']:g} 秒 | {level} | {'；'.join(notes) or '主体入画、大小合适、没有被挡、头后干净'} |")
+if comp:
+    lines += ["", "## 构图（只统计，不拦）", "", "| 镜头 | 主体 | 头部水平位置 | 判断 |", "|---|---|---|---|"]
+    for sh, p, x, eye, mid in comp:
+        tag = "居中平视" if (eye and mid) else ("居中" if mid else ("黄金分割附近" if 0.32 <= x <= 0.44 or 0.56 <= x <= 0.68 else "偏边"))
+        lines.append(f"| {sh['id']} {sh['name']} | {p} | {x:.0%} | {tag} |")
 open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")

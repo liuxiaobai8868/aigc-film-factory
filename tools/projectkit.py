@@ -210,7 +210,8 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
                 if sh.get(key):
                     s[key] = sh[key]
             spec_shots.append(s)
-        prev = {"name": f"{short}_第{n}条", "duration": c["dur"], "fps": 24, "resolution": [1280, 720], "world_color": list(world_color),
+        ratio = texts.get("RATIO", "16:9")
+        prev = {"name": f"{short}_第{n}条", "duration": c["dur"], "fps": 24, "resolution": [720, 1280] if ratio == "9:16" else [1280, 720], "world_color": list(world_color),
                 "boxes": world_boxes + c.get("extra_boxes", []), "people": c["people"], "shots": shots_prev}
         json.dump(prev, open(os.path.join(here, f"第{n}条.json"), "w", encoding="utf-8"), ensure_ascii=False)
         assets, geo, chars = [], [], []
@@ -229,7 +230,7 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
                     geo.append(it["geo_note"])
             if kind in ("character", "giant"):
                 chars.append(it["lock"])
-        spec = {"schema": "aigc-shot-spec/1", "project": project, "clip": n, "title": c["title"], "duration": c["dur"], "ratio": "16:9",
+        spec = {"schema": "aigc-shot-spec/1", "project": project, "clip": n, "title": c["title"], "duration": c["dur"], "ratio": ratio,
                 "resolution": "720p", "summary": c["summary"], "model_hint": c["model"],
                 "previs": f"预演/previs_{short}_第{n}条.mp4", "previs_spec": f"../预演规格/第{n}条.json", "previs_colors": previs_colors,
                 "assets": assets, "count": c["count"], "context": c["context"], "two_worlds": texts["THREE"], "style": c.get("style_zh", texts["STYLE"]),

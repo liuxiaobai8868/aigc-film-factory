@@ -1,0 +1,175 @@
+{
+ "ep": "02",
+ "hook": "他把烟放回了货架。",
+ "opens_with": "冷开场先闪回黑衣人开口那一句，再接上集结尾：阿青看着门口。",
+ "clips": [
+  {
+   "n": "0",
+   "title": "冷开场",
+   "location": "便利店",
+   "cold_open_of": "1",
+   "summary": "闪前：黑衣人开口",
+   "context": "闪前。",
+   "cast": {
+    "阿青": {
+     "at": "收银台后",
+     "face": "柜台前"
+    },
+    "黑衣人": {
+     "at": "柜台前",
+     "face": "收银台后"
+    }
+   },
+   "shots": [
+    {
+     "name": "闪前",
+     "dur": 4,
+     "type": "ots",
+     "fg": "阿青",
+     "subject": "黑衣人",
+     "size": "近景",
+     "action": {
+      "text": "他把烟盒推回台面",
+      "en": "he slides the pack back across the counter",
+      "at": 0.5
+     },
+     "line": {
+      "who": "黑衣人",
+      "text": "他不来了。"
+     }
+    }
+   ],
+   "turn": {
+    "from": "不知道他是谁",
+    "to": "他开口了"
+   },
+   "signature": {
+    "shot": 1,
+    "why": "过肩看他的脸第一次出现"
+   },
+   "tension": "观众先听到他的话，还不知道他是谁",
+   "energy": {
+    "in": 3,
+    "out": 4
+   },
+   "stillness": "冷开场一镜定住",
+   "constraint": "同第1条。",
+   "splice": "出口：硬切片名。",
+   "model": "Seedance 2.5 + 白模",
+   "summary_en": "Cold open: the man in black slides the cigarette pack back and says the old man is not coming."
+  },
+  {
+   "n": "1",
+   "title": "他不来了",
+   "location": "便利店",
+   "time_jump": "冷开场之后回到上集结尾",
+   "summary": "黑衣人进门，说老周不来了",
+   "context": "上集结尾，阿青看着门口。",
+   "cast": {
+    "阿青_湿透": {
+     "at": "收银台后",
+     "face": "柜台前"
+    },
+    "黑衣人": {
+     "path": [
+      {
+       "t": 0,
+       "at": "门口"
+      },
+      {
+       "t": 3,
+       "at": "柜台前"
+      }
+     ],
+     "face": "收银台后"
+    }
+   },
+   "props": [
+    "香烟"
+   ],
+   "shots": [
+    {
+     "name": "进门",
+     "dur": 5,
+     "type": "wide",
+     "who": [
+      "黑衣人"
+     ],
+     "view": "朝门口",
+     "action": {
+      "text": "黑衣人推门进来，收起的伞在地上拖出一道水痕",
+      "en": "the man in black pushes in, his closed umbrella leaving a trail of water"
+     },
+     "sound": [
+      {
+       "text": "风铃声",
+       "en": "a door chime",
+       "source": "门口"
+      }
+     ],
+     "move": {
+      "kind": "pull",
+      "speed": "slow",
+      "why": "他走进来，店一点点变小"
+     }
+    },
+    {
+     "name": "开口",
+     "dur": 4,
+     "type": "ots",
+     "fg": "阿青_湿透",
+     "subject": "黑衣人",
+     "size": "近景",
+     "action": {
+      "text": "他把烟盒推回台面",
+      "en": "he slides the pack back across the counter",
+      "at": 0.5
+     },
+     "line": {
+      "who": "黑衣人",
+      "text": "他不来了。"
+     }
+    },
+    {
+     "name": "反应",
+     "dur": 2.5,
+     "type": "single",
+     "subject": "阿青_湿透",
+     "size": "特写",
+     "action": {
+      "text": "她握着零钱的手松开",
+      "en": "her hand holding the change opens"
+     },
+     "line": {
+      "who": "阿青_湿透",
+      "text": "……不来了？",
+      "delivery": "轻，回问",
+      "delivery_en": "softly, echoing"
+     }
+    }
+   ],
+   "turn": {
+    "from": "门外的陌生人",
+    "to": "老周的消息"
+   },
+   "signature": {
+    "shot": 2,
+    "why": "过肩看他第一次露脸，烟盒推回来"
+   },
+   "tension": "阿青等的人不会再来，她还没听懂",
+   "energy": {
+    "in": 4,
+    "out": 2
+   },
+   "drama": {
+    "a": "黑衣人想把话说完就走",
+    "b": "阿青想知道老周怎么了",
+    "shift": 3
+   },
+   "constraint": "店里只有两个人。",
+   "splice": "出口：她松开手。",
+   "model": "Seedance 2.5 + 白模",
+   "summary_en": "The man in black walks in, puts the pack back on the counter and tells the clerk the old man will not come again."
+  }
+ ]
+}

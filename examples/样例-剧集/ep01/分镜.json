@@ -1,0 +1,196 @@
+{
+ "ep": "01",
+ "hook": "门口那个人一直没进来。",
+ "clips": [
+  {
+   "n": "1",
+   "title": "老样子",
+   "location": "便利店",
+   "summary": "老周三点来买烟",
+   "context": "深夜便利店。",
+   "cast": {
+    "阿青": {
+     "at": "收银台后",
+     "face": "柜台前"
+    },
+    "老周": {
+     "path": [
+      {
+       "t": 0,
+       "at": "柜台前",
+       "face": "收银台后"
+      },
+      {
+       "t": 4,
+       "at": "柜台前"
+      },
+      {
+       "t": 7,
+       "at": "门口",
+       "face": "门外"
+      }
+     ]
+    }
+   },
+   "props": [
+    "香烟"
+   ],
+   "shots": [
+    {
+     "name": "递烟",
+     "dur": 4,
+     "type": "ots",
+     "fg": "老周",
+     "subject": "阿青",
+     "size": "中景",
+     "action": {
+      "text": "她把一包素白烟盒推过台面",
+      "en": "she slides a plain white cigarette pack across the counter",
+      "at": 0.5
+     },
+     "line": {
+      "who": "阿青",
+      "text": "老样子。"
+     }
+    },
+    {
+     "name": "门外",
+     "dur": 6.5,
+     "type": "wide",
+     "who": [
+      "老周"
+     ],
+     "view": "朝门口",
+     "action": {
+      "text": "老周推门出去，门外雨里站着一个撑伞的人影",
+      "en": "the older man pushes out into the rain where a figure with an umbrella stands outside"
+     },
+     "sound": [
+      {
+       "text": "推门的风铃声",
+       "en": "a door chime",
+       "source": "门口"
+      },
+      {
+       "text": "雨声",
+       "en": "rain",
+       "source": "画外"
+      }
+     ],
+     "move": {
+      "kind": "push",
+      "speed": "slow",
+      "why": "推向门外那个人影，悬念收紧"
+     }
+    },
+    {
+     "name": "台面",
+     "dur": 2.5,
+     "type": "insert",
+     "size": "特写",
+     "object": "台面",
+     "hand": "阿青的右手（年轻女人的手，深蓝色旧袖口）",
+     "hand_en": "the clerk's right hand (a young woman's hand, worn dark-blue cuff)",
+     "object_en": "the wooden countertop",
+     "action": {
+      "text": "她的手停在零钱上没收",
+      "en": "her hand stops on the change without picking it up"
+     }
+    }
+   ],
+   "turn": {
+    "from": "一切照旧",
+    "to": "门外多了一个人"
+   },
+   "signature": {
+    "shot": 2,
+    "why": "冷白灯管里推向门外雨中的人影，风铃一响"
+   },
+   "tension": "老周每天三点来；今天门外多了一个人，观众看见了，阿青还没看见",
+   "energy": {
+    "in": 2,
+    "out": 3
+   },
+   "constraint": "店里只有阿青和老周。",
+   "splice": "出口：手停在零钱上。",
+   "model": "Seedance 2.5 + 白模",
+   "summary_en": "At three in the morning the regular customer buys his cigarettes and leaves; a figure with an umbrella waits outside."
+  },
+  {
+   "n": "2",
+   "title": "门口",
+   "location": "便利店",
+   "time_jump": "老周走后过了几分钟",
+   "summary": "黑衣人站在门口不进来",
+   "context": "老周走了。",
+   "cast": {
+    "阿青": {
+     "at": "收银台后",
+     "face": "门口"
+    },
+    "黑衣人_背影": {
+     "at": "门外",
+     "face": "门外"
+    }
+   },
+   "shots": [
+    {
+     "name": "背影",
+     "dur": 5,
+     "type": "wide",
+     "who": [
+      "黑衣人_背影"
+     ],
+     "view": "朝门口",
+     "action": {
+      "text": "门外的黑衣人背对着店，伞尖滴水，一动不动",
+      "en": "outside, the man in black stands with his back to the shop, rain dripping from the umbrella tip, not moving"
+     },
+     "sound": [
+      {
+       "text": "雨声",
+       "en": "rain",
+       "source": "画外"
+      }
+     ],
+     "stillness": "x"
+    },
+    {
+     "name": "看",
+     "dur": 3,
+     "type": "single",
+     "subject": "阿青",
+     "size": "近景",
+     "action": {
+      "text": "她抬头看向门口",
+      "en": "she looks up toward the door"
+     },
+     "line": {
+      "who": "阿青",
+      "text": "要……进来吗？",
+      "delivery": "小声",
+      "delivery_en": "quietly"
+     }
+    }
+   ],
+   "stillness": "门口的人一直不动，静是这一条的压力",
+   "turn": {
+    "from": "夜班照旧",
+    "to": "门外有个人一直不进来"
+   },
+   "signature": {
+    "shot": 1,
+    "why": "玻璃门外一动不动的背影，伞尖滴水"
+   },
+   "tension": "观众和阿青都不知道他是谁，他一直不进来",
+   "energy": {
+    "in": 3,
+    "out": 4
+   },
+   "constraint": "黑衣人始终背对镜头。",
+   "splice": "出口：阿青看着门口。",
+   "model": "Seedance 2.5 + 白模",
+   "summary_en": "A man in a long black coat stands outside the glass door with his back to the shop and never comes in."
+  }
+ ]
+}

@@ -1,0 +1,25 @@
+subject_definitions:
+<Subject 1>: 阿青 — a tired young night-shift convenience-store clerk, clearly an adult in her early twenties. Appearance from uploaded image 1 (face only from the large portrait on the right; the blurred oval on the full-body view is not a face; backdrop and sheet layout not carried over).
+<Subject 2>: 黑衣人 — a tall, gaunt middle-aged man in a long black coat holding a closed black umbrella. Appearance from uploaded image 2 (face only from the large portrait on the right; the blurred oval on the full-body view is not a face; backdrop and sheet layout not carried over).
+<Subject 3>: 便利店 — a small convenience store late at night. Spatial layout, materials and light come from uploaded reference image 3; it is not a first frame and its composition is not copied.
+<Video 1>: grey whitebox previs of this clip. It defines only the camera path, cut points, framing, blocking and the order of events; its grey boxes, colored proxy cylinders and neutral light are not carried over. Proxies: yellow cylinder = <Subject 1>; blue cylinder=; red cylinder = <Subject 2>; grey boxes = set and props.
+
+summary:
+[reference generation] A 4-second live-action clip. Cold open: the man in black slides the cigarette pack back and says the old man is not coming.
+
+retention_analysis:
+<Subject 1>: fully_preserved — face, hair, costume and body shape
+<Subject 2>: fully_preserved — face, hair, costume and body shape
+<Subject 3>: partially_preserved — layout, materials and lighting
+<Video 1>: weak_reference — camera path, cut timing, framing and blocking only
+
+detailed_description:
+Live-action cinematic footage. Setting look: cinematic 35mm footage; a warm amber practical light source on the subject against a cold blue glow in the background; strong warm-cold color separation; volumetric haze catching the light; shallow depth of field; deep low-key shadows; soft glow around highlights; clean, noise-free image. People look: cinematic footage shot on a 35mm lens; dusk blue-grey ambient light with a faint warm orange rim from behind; low contrast; long-lens compression and shallow depth of field; natural, realistic skin with subtle texture and a soft natural sheen, not retouched and not over-sharpened; restrained, unposed expression; clean, noise-free image.
+Every shot change is a hard cut with no fades or dissolves; each shot keeps one camera position and one main camera move. There are no subtitles and no on-screen text.
+[Shot 1] Medium close over-the-shoulder shot on a 50 mm lens, static camera, matching 0–4 s of <Video 1>. In frame: <Subject 1>'s blurred shoulder in the foreground; <Subject 2>. At 00:00.500, he slides the pack back across the counter. <Subject 2> (S1), a low, slow, nearly flat male voice, says: <d>[Chinese] 他不来了。</d> Only the speaker's lips move.
+
+overall_soundscape:
+Quiet room tone with the natural sounds of the actions on screen.
+
+non_diegetic_music:
+N/A

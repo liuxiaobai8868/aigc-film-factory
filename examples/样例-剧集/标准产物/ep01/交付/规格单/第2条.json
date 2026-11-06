@@ -1,0 +1,132 @@
+{
+ "schema": "aigc-shot-spec/1",
+ "project": "三点（剧集样例）",
+ "clip": "2",
+ "title": "门口",
+ "duration": 8.0,
+ "ratio": "9:16",
+ "resolution": "720p",
+ "summary": "黑衣人站在门口不进来",
+ "model_hint": "Seedance 2.5 + 白模",
+ "previs": "预演/previs_三点剧_第2条.mp4",
+ "previs_spec": "../预演规格/第2条.json",
+ "previs_colors": "黄色圆柱=阿青，蓝色圆柱=老周，红色圆柱=黑衣人，灰白方块=场景和道具",
+ "assets": [
+  {
+   "tag": "@阿青",
+   "file": "参考图定版/阿青_三视图.png",
+   "kind": "character",
+   "name": "阿青",
+   "duty": "@图片N — 「阿青」：脸只从右侧大头像取；体型和服装从左侧全身像取；正面全身像的模糊椭圆不是脸；不继承灰底和三视图版式。",
+   "brief_en": "a tired young night-shift convenience-store clerk, clearly an adult in her early twenties.",
+   "voice_en": "a young woman with a light, slightly husky voice who speaks slowly"
+  },
+  {
+   "tag": "@黑衣人_背影",
+   "file": "参考图定版/黑衣人_背影_三视图.png",
+   "kind": "character",
+   "name": "黑衣人_背影",
+   "duty": "@图片N — 「黑衣人」的另一个状态（黑衣人_背影）：脸只从右侧大头像取；不继承灰底和三视图版式。",
+   "brief_en": "a tall, gaunt middle-aged man in a long black coat holding a closed black umbrella.",
+   "voice_en": "a low, slow, nearly flat male voice"
+  },
+  {
+   "tag": "@loc_便利店",
+   "file": "参考图定版/场景_便利店.png",
+   "kind": "scene",
+   "name": "便利店",
+   "duty": "@图片N — 「便利店」：只取空间结构、材质和光；不作首帧，不继承构图。",
+   "brief_en": "a small convenience store late at night."
+  }
+ ],
+ "count": "画面中始终只有 2 个有名字的角色：阿青（深蓝工装、左手旧电子表）、黑衣人_背影（黑色长风衣、黑伞）。每一镜画面里有谁，以时间轴里\"画面里\"那一句为准。",
+ "context": "老周走了。",
+ "two_worlds": "世界锁：只有一个世界，深夜下雨的小便利店，安静、冷暖对冲；屋里暖黄台灯和冷白灯管，门外是雨夜的街。",
+ "style": "质感：便利店（R05）：35 毫米电影剧照质感；人物身上是暖琥珀色的实用光，背景是冷蓝色的光；冷暖分明；有体积雾接住光线；浅景深；暗部深沉；高光边缘有柔和光晕；画面干净；人物（R04）：35 毫米镜头的电影剧照质感；黄昏灰蓝的环境光，身后一道淡淡的暖橙轮廓光；低反差；长焦压缩，浅景深；皮肤自然真实，有细微纹理，不磨皮也不过度锐化；表情克制、不摆拍；画面干净。",
+ "geo": [
+  "便利店：深夜的小便利店；收银台在玻璃门的左手边，台上一盏暖黄色小台灯；三排货架在冷白灯管下；玻璃门外是下雨的街和窄屋檐。",
+  "「便利店」美术：锚点物：收银台上的暖黄小台灯、玻璃门和门上的风铃、三排货架；光逻辑：主光是收银台上的暖黄台灯（约 3000K），照亮阿青和台面一米内；辅光是头顶冷白灯管（约 6500K）照货架；门外是雨夜街灯的冷蓝反光；时代：2010 年代中国小城；可以出现：塑料筐、手写价签、旧电子秤；不能出现：自助收银机、电子价签、大屏广告；使用痕迹：台面边缘被手磨亮，地上有雨天带进来的湿脚印，货架角贴着卷边的胶带；画面对冲：冷白灯管压满整店，只有收银台一圈暖黄；店大、人小，门外黑、店里亮。"
+ ],
+ "chars": [
+  "阿青：二十出头的成年女人，瘦，齐肩黑发别在耳后；穿洗旧的深蓝色工装外套和黑色长裤，白色帆布鞋；左手腕戴一块旧电子表。",
+  "黑衣人：背对镜头的高瘦背影，长黑风衣，看不见脸。"
+ ],
+ "music": "配乐：没有配乐，只有冰柜的嗡嗡声、门外的雨声和推门的风铃声。",
+ "sfx": "<雨声>",
+ "voices": [
+  "阿青：声音轻，有点哑，语速慢。"
+ ],
+ "lip": "对白：普通话，自然口语。所有角色只说花括号里的台词；每句台词只有说话的那一个角色动嘴，其余角色闭着嘴；画外音不对任何人的口型；人声干净贴近，有人说话时配乐和环境声自动压低。画面全程是纯影像，没有字幕。",
+ "shots": [
+  {
+   "t0": 0.0,
+   "t1": 5.0,
+   "id": 1,
+   "name": "背影",
+   "body": "画面里：黑衣人_背影。84°，固定；门外的黑衣人背对着店，伞尖滴水，一动不动；<雨声>。",
+   "allow_occlude": [
+    "便利店_Door"
+   ],
+   "struct": {
+    "type": "wide",
+    "lens": 24,
+    "who": [
+     "黑衣人_背影"
+    ],
+    "view": "朝门口",
+    "action": [
+     {
+      "at": null,
+      "zh": "门外的黑衣人背对着店，伞尖滴水，一动不动",
+      "en": "outside, the man in black stands with his back to the shop, rain dripping from the umbrella tip, not moving"
+     }
+    ],
+    "sound": [
+     {
+      "zh": "雨声",
+      "en": "rain",
+      "source": "画外"
+     }
+    ]
+   }
+  },
+  {
+   "t0": 5.0,
+   "t1": 8.0,
+   "id": 2,
+   "name": "看",
+   "body": "画面里：阿青。47°，近景，固定；她抬头看向门口；阿青（小声）说：{要……进来吗？}",
+   "allow_occlude": [
+    "便利店_Door"
+   ],
+   "struct": {
+    "type": "single",
+    "size": "近景",
+    "lens": 50,
+    "subject": "阿青",
+    "action": [
+     {
+      "at": null,
+      "zh": "她抬头看向门口",
+      "en": "she looks up toward the door"
+     }
+    ],
+    "line": {
+     "who": "阿青",
+     "text": "要……进来吗？",
+     "delivery": "小声",
+     "delivery_en": "quietly"
+    }
+   }
+  }
+ ],
+ "constraint": "人物都是正常的人体结构：两只手各五根手指。黑衣人始终背对镜头。",
+ "ban": "无",
+ "long_take": "",
+ "fail": "人物脸和服装与参考图不一致；画面出现文字。",
+ "risk": "—",
+ "splice": "出口：阿青看着门口。",
+ "style_en": "Setting look: cinematic 35mm footage; a warm amber practical light source on the subject against a cold blue glow in the background; strong warm-cold color separation; volumetric haze catching the light; shallow depth of field; deep low-key shadows; soft glow around highlights; clean, noise-free image. People look: cinematic footage shot on a 35mm lens; dusk blue-grey ambient light with a faint warm orange rim from behind; low contrast; long-lens compression and shallow depth of field; natural, realistic skin with subtle texture and a soft natural sheen, not retouched and not over-sharpened; restrained, unposed expression; clean, noise-free image.",
+ "summary_en": "A man in a long black coat stands outside the glass door with his back to the shop and never comes in.",
+ "music_en": "N/A"
+}

@@ -30,7 +30,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
 PY = sys.executable
 STAGES = ["confirm", "assets", "images", "asset_review", "stress", "specs", "previs", "check_spec", "geometry", "framesheets",
-          "previs_review", "compile", "report"]
+          "previs_review", "compile", "publish", "report"]
+SEASON_STAGES = ["confirm", "assets", "images", "asset_review"]  # 剧集模式：剧目录只出全季资产，其余逐集跑（docs/22）
 sys.path.insert(0, TOOLS)
 
 
@@ -105,8 +106,13 @@ def asset_table(proj):
 
 # ---------------- 各阶段 ----------------
 
+def skind(proj):
+    import storyboard
+    return storyboard.series_kind(proj)
+
+
 def json_mode(proj):
-    return os.path.exists(os.path.join(proj, "设定.json"))
+    return os.path.exists(os.path.join(proj, "设定.json")) or skind(proj) == "episode"
 
 
 def offline(d):
@@ -114,11 +120,25 @@ def offline(d):
 
 
 def st_confirm(proj, d):
+    if skind(proj) == "episode":
+        root = os.path.dirname(proj)
+        sd = load(root)
+        if not (sd["confirm"]["story"] and sd["confirm"]["script"]):
+            raise Stop("全季的故事（季圣经）和设定还没确认", f"用户确认后跑 `pipeline.py confirm {os.path.relpath(root, ROOT)} story` 和 `script`")
+        if not d["confirm"]["script"]:
+            raise Stop(f"第 {os.path.basename(proj)[2:]} 集剧本还没确认",
+                       f"把这一集的剧本发给用户确认，确认后跑 `pipeline.py confirm {os.path.relpath(proj, ROOT)} script`")
+        if not os.path.exists(os.path.join(proj, "分镜.json")):
+            raise Stop("缺少 分镜.json", "按 docs/19、docs/22 把这一集剧本拆成 分镜.json（设定用剧目录的），`storyboard.py check` 通过后再 run")
+        mark(d, "confirm")
+        return
+    if skind(proj) == "season" and not os.path.exists(os.path.join(proj, "季.json")):
+        raise Stop("缺少 季.json", "按 docs/22 写全季的 季.json")
     miss = [k for k, n in (("story", "故事"), ("script", "剧本")) if not d["confirm"][k]]
     if miss:
         raise Stop("用户还没确认：" + "、".join(miss),
                    "把故事 / 剧本发给用户确认；用户在对话里明确确认后，跑 `pipeline.py confirm <项目> story` 或 `script`")
-    need = ("设定.json", "分镜.json") if json_mode(proj) else ("预演规格/build_assets.py", "预演规格/gen_clips.py")
+    need = ("设定.json", "季.json") if skind(proj) == "season" else ("设定.json", "分镜.json") if json_mode(proj) else ("预演规格/build_assets.py", "预演规格/gen_clips.py")
     for f in need:
         if not os.path.exists(os.path.join(proj, f)):
             raise Stop(f"缺少 {f}", "按 docs/19 把剧本拆成 设定.json 和 分镜.json（样例 examples/样例-便利店/），"
@@ -135,6 +155,29 @@ def build(proj, what):
         return
     src = os.path.join(proj, "预演规格", "build_assets.py" if what == "assets" else "gen_clips.py")
     run([PY, "-I", src], cwd=os.path.dirname(src))
+
+
+def _season(fn):
+    """剧集模式：资产三阶段在剧目录上跑（全季共用一套资产，预算和目检记在剧目录），跑完把定版图和资产文档同步进这一集。"""
+    def wrap(proj, d):
+        if skind(proj) != "episode":
+            return fn(proj, d)
+        root = os.path.dirname(proj)
+        sd = load(root)
+        try:
+            fn(root, sd)
+        except Stop as e:
+            save(root, sd)
+            raise Stop(f"（全季资产，剧目录 {os.path.relpath(root, ROOT)}）{e}", e.next_step.replace("<项目>", os.path.relpath(root, ROOT)))
+        save(root, sd)
+        if fn is st_asset_review:
+            src, dst = os.path.join(root, "交付", "参考图定版"), os.path.join(proj, "交付", "参考图定版")
+            os.makedirs(dst, exist_ok=True)
+            for f in os.listdir(src):
+                shutil.copy2(os.path.join(src, f), os.path.join(dst, f))
+            shutil.copy2(os.path.join(root, "交付", "01-资产提示词.md"), os.path.join(proj, "交付", "01-资产提示词.md"))
+        mark(d, fn.__name__[3:], season=True)
+    return wrap
 
 
 def st_assets(proj, d):
@@ -224,7 +267,7 @@ def st_asset_review(proj, d):
 
 def st_stress(proj, d):
     """可选：角色压力测试（production.json 里 "stress_test": true 才做；crew/07，定稿前看真人感和一致性）。"""
-    if not d.get("stress_test") or not json_mode(proj):
+    if not d.get("stress_test") or not json_mode(proj) or skind(proj):
         mark(d, "stress", skipped=True)
         return
     run([PY, "-I", os.path.join(TOOLS, "storyboard.py"), "stress", proj])
@@ -387,6 +430,59 @@ def st_compile(proj, d):
             raise Stop("编译有 FAIL：\n" + "\n".join(new), "按 FAIL 说明拆条或换模型；确实不提交的段落写进 production.json 的 known_fails 并告诉用户")
 
 
+def st_publish(proj, d):
+    """剧集模式：每集一份发布包（封面提示词、下集预告、文案、合规）；单片跳过（docs/22）。"""
+    if skind(proj) != "episode":
+        mark(d, "publish", skipped=True)
+        return
+    import storyboard
+    root, ep = os.path.dirname(proj), os.path.basename(proj)[2:]
+    bible, board = storyboard.load(proj)
+    season = board["_series"]["season"]
+    e = next(x for x in season["episodes"] if x["ep"] == ep)
+    miss = [k for k in ("titles", "blurb", "tags") if not e.get(k)]
+    if miss:
+        raise Stop(f"季.json 第 {ep} 集缺发布文案：{'、'.join(miss)}",
+                   "在 季.json 这一集写 titles（3 个钩子标题）、blurb（80–120 字简介）、tags（5–8 个话题），可选 pinned（置顶评论），再 run")
+    clips_ = board.get("clips", [])
+    pool = [c for c in clips_ if not c.get("cold_open_of")] or clips_  # 封面不用冷开场
+    top = max(pool, key=lambda c: ((c.get("energy") or {}).get("out", 0), (c.get("energy") or {}).get("in", 0)))
+    spec = json.load(open(os.path.join(proj, "交付", "规格单", f"第{top['n']}条.json"), encoding="utf-8"))
+    sig = (top.get("signature") or {}).get("shot", 1)
+    body = spec["shots"][sig - 1]["body"]
+    refs = "、".join(a["tag"] for a in spec["assets"] if not a["tag"].startswith("@crowd"))
+    style = spec.get("style_en", "")
+    scene = re.sub(r"；[^；。]*：\{[^}]*\}|<[^>]*>|\{[^}]*\}", "", body).strip("；; ")  # 封面是静帧：去掉台词和声音
+    cover = lambda r: (f"A {r} cover still for an AI short drama episode, near live-action cinematic. Scene (keep exactly): {scene} "  # noqa: E731
+                       f"The main character faces the camera in the upper-middle of the frame; leave clear space in the top third for a title added later. "
+                       f"{style} No text, letters, numbers or watermarks.")
+    nxt = [x["ep"] for x in season["episodes"]]
+    i = nxt.index(ep)
+    teaser = ["（最后一集）"]
+    if i + 1 < len(nxt):
+        np_ = os.path.join(root, f"ep{nxt[i + 1]}", "分镜.json")
+        if os.path.exists(np_):
+            nb = json.load(open(np_, encoding="utf-8"))
+            best = sorted([c for c in nb.get("clips", []) if not c.get("cold_open_of")], key=lambda c: -(c.get("energy") or {}).get("out", 0))[:3]
+            teaser = [f"- 第 {nxt[i + 1]} 集第{c['n']}条 第 {(c.get('signature') or {}).get('shot', 1)} 镜：{(c.get('signature') or {}).get('why', '')}" for c in best]
+            line = next((s["line"]["text"] for c in best for s in c.get("shots", []) if s.get("line")), "")
+            if line:
+                teaser.append(f"- 配一句台词：「{line}」")
+        else:
+            teaser = [f"（第 {nxt[i + 1]} 集分镜写完后重跑 run 生成）"]
+    L = [f"# 发布包：{season.get('title', bible.get('title', ''))} 第 {ep} 集《{e.get('title', '')}》", "",
+         "## 封面（出图前报张数和花费）", "", f"参考图：{refs}（取自 交付/参考图定版/）", "",
+         "竖版 3:4：", "", "```text", cover("vertical 3:4"), "```", "", "横版 4:3：", "", "```text", cover("horizontal 4:3"), "```", "",
+         "## 片尾与下集预告（接在正片之后，不占正片时长）", "", "- 片尾卡 3 秒：本集结尾钩子定格 + 剧名。", f"- 结尾钩子：{board.get('hook', '')}",
+         "- 下集预告 8–10 秒，取下一集最强的 2–3 个镜头：", *teaser, "",
+         "## 文案", "", "钩子标题：", *[f"- {t}" for t in e["titles"]], "", f"简介：{e['blurb']}", "",
+         "话题：" + " ".join(f"#{t.lstrip('#')}" for t in e["tags"]), "", f"置顶评论：{e.get('pinned', '—')}", "",
+         "## 合规", "", "- 标注 AI 生成内容；不用\"最强\"\"第一\"等绝对化用语；不用真实人物肖像和真实品牌（crew/14）。",
+         f"- 付费卡点集：{'是' if e.get('paywall') else '否'}"]
+    open(os.path.join(proj, "交付", "发布包.md"), "w", encoding="utf-8").write("\n".join(L) + "\n")
+    mark(d, "publish")
+
+
 def st_report(proj, d):
     lines = [f"# 流水线报告（{now()}）", "", "| 阶段 | 状态 |", "|---|---|"]
     for s in STAGES[:-1]:
@@ -394,10 +490,43 @@ def st_report(proj, d):
     b = d["budget"]["images"]
     lines += ["", f"出图预算：批准 {b['approved']} 张，已用 {b['used']} 张。", "",
               f"投喂包：{', '.join(d['video_models'])}，在 `交付/投喂包/`。已知不提交的段落：{d.get('known_fails') or '无'}。", "",
-              ] + _curve(proj) + _cost(proj) + [
+              ] + _curve(proj) + _composition(proj) + _colors(proj) + _cost(proj) + [
               "下一步：用户按投喂包出片（或接入出视频接口后由流水线提交），出完把视频交回审片（docs/04 24 分制 + docs/14 4.1 实拍教训）。"]
     open(os.path.join(proj, "logs", "流水线报告.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     mark(d, "report")
+
+
+def _composition(proj):
+    """构图统计（白模几何检查里量的，不拦；docs/21 第五节）：居中平视的单人镜头全片不超过 2 个。"""
+    rows, mid = [], []
+    for c in clips(proj):
+        p = os.path.join(proj, "logs", f"几何检查_{c}.md")
+        if not os.path.exists(p):
+            continue
+        for ln in open(p, encoding="utf-8"):
+            m = re.match(r"\| (\S+) (\S+) \| (\S+) \| (\d+)% \| (\S+) \|", ln)
+            if m:
+                rows.append(m.group(5))
+                if m.group(5) == "居中平视":
+                    mid.append(f"{c} 镜{m.group(1)}")
+    if not rows:
+        return []
+    n = len(rows)
+    out = ["## 构图统计（白模量的，不拦）", "",
+           f"人物镜头 {n} 个：黄金分割附近 {rows.count('黄金分割附近')}、居中 {rows.count('居中') + len(mid)}（其中居中平视 {len(mid)}）、偏边 {rows.count('偏边')}。"]
+    if len(mid) > 2:
+        out.append(f"居中平视超过 2 个（{'、'.join(mid)}）：换成俯拍、仰拍、过肩、透过前景拍，或让人物偏到 38% / 62%（Eian：全片平视正面最多两次）。")
+    return out + [""]
+
+
+def _colors(proj):
+    """色表与黑白对照（tools/color_check.py，只提醒）；Pillow 不可用时跳过。"""
+    r = subprocess.run([sys.executable, os.path.join(TOOLS, "color_check.py"), proj], capture_output=True, text=True)
+    if r.returncode != 0:
+        return []
+    warn = [l for l in r.stdout.splitlines() if l.startswith("| ") and "反差太低" in l]
+    return ["## 色表与明暗", "", "每张场景图、人物图的主色和黑白反差见 `logs/色表.md`，黑白对照见 `logs/黑白对照.jpg`。"] + \
+        ([f"反差太低的图：{len(warn)} 张，转黑白后人和背景分不开，考虑重出或改光。"] if warn else []) + [""]
 
 
 def _cost(proj):
@@ -427,6 +556,8 @@ def _curve(proj):
 
 
 FUNCS = {s: globals()["st_" + s] for s in STAGES}
+for _s in ("assets", "images", "asset_review"):
+    FUNCS[_s] = _season(FUNCS[_s])
 
 
 # ---------------- 命令 ----------------
@@ -434,7 +565,8 @@ FUNCS = {s: globals()["st_" + s] for s in STAGES}
 def cmd_run(proj, until=None):
     d = load(proj)
     os.makedirs(os.path.join(proj, "logs"), exist_ok=True)
-    for s in STAGES:
+    season = skind(proj) == "season"
+    for s in (SEASON_STAGES if season else STAGES):
         try:
             print(f"▶ {s}", flush=True)
             FUNCS[s](proj, d)
@@ -454,6 +586,9 @@ def cmd_run(proj, until=None):
             return 0
     d.pop("blocked", None)
     save(proj, d)
+    if season:
+        print(f"NEXT：全季资产已就绪。逐集：`pipeline.py episode {os.path.relpath(proj, ROOT)} <集号>` 建集目录，拆 分镜.json，确认剧本后 `run {os.path.relpath(proj, ROOT)}/ep<集号>`")
+        return 0
     print("NEXT：全部完成。把 logs/流水线报告.md 的要点和投喂包位置告诉用户；出视频要用户确认花费。")
     return 0
 
@@ -478,11 +613,23 @@ def cmd_selftest(example, update=False):
     save(proj, d)
     print(f"自测目录：{proj}")
     rc = cmd_run(proj)
+    files = []
+    if rc == 0 and skind(proj) == "season":  # 剧集样例：全季资产 → 逐集跑完（docs/22）
+        import storyboard
+        for ep, ed in storyboard.episode_dirs(proj):
+            e = load(ed)
+            e.update(selftest=True, project=f"{d['project']} 第{ep}集", video_models=d["video_models"])
+            e["confirm"] = {"story": "selftest", "script": "selftest"}
+            save(ed, e)
+            rc = rc or cmd_run(ed)
+            if rc == 0:
+                files += [os.path.join(f"ep{ep}", f) for f in _golden_files(ed)] + [os.path.join(f"ep{ep}", "交付", "发布包.md")]
+        files = ["交付/01-资产提示词.md"] + files
     if rc != 0:
         print("✗ 自测没跑通：流水线在上面那一步停下了。先检查环境（Python 3.9+、Pillow、Blender 4.x、ffmpeg），再看报错。")
         return 1
     gold = os.path.join(example, "标准产物")
-    files = _golden_files(proj)
+    files = files or _golden_files(proj)
     if update:
         shutil.rmtree(gold, ignore_errors=True)
         for f in files:
@@ -508,6 +655,22 @@ def cmd_selftest(example, update=False):
 
 def cmd_status(proj):
     d = load(proj)
+    if skind(proj) == "season":
+        import storyboard
+        print("全季资产：" + "  ".join(f"{'✓' if s in d['pipeline'] else '·'} {s}" for s in SEASON_STAGES))
+        b = d["budget"]["images"]
+        print(f"确认：故事 {'✓' if d['confirm']['story'] else '✗'}  设定 {'✓' if d['confirm']['script'] else '✗'}；出图预算 {b['used']}/{b['approved']}")
+        for ep, ed in storyboard.episode_dirs(proj):
+            if not os.path.isdir(ed):
+                print(f"  ep{ep}：未建")
+                continue
+            e = load(ed)
+            done = sum(1 for s in STAGES if s in e["pipeline"])
+            st = "完成" if done == len(STAGES) else (f"停在 {e['blocked']['stage']}" if e.get("blocked") else f"{done}/{len(STAGES)}")
+            print(f"  ep{ep}：剧本 {'✓' if e['confirm']['script'] else '✗'}，{st}")
+        if d.get("blocked"):
+            print(f"NEXT：{d['blocked']['next']}")
+        return 0
     for s in STAGES:
         print(f"  {'✓' if s in d['pipeline'] else '·'} {s}")
     pend = [k for k, v in d["reviews"].items() if v.get("status") == "待目检"]
@@ -525,7 +688,7 @@ def cmd_status(proj):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "selftest", "qc", "splice"])
+    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "selftest", "qc", "splice", "episode"])
     ap.add_argument("project")
     ap.add_argument("args", nargs="*")
     ap.add_argument("--until", choices=STAGES)
@@ -547,6 +710,20 @@ def main():
         return 0
     if not os.path.isdir(proj):
         sys.exit(f"没有这个项目目录：{proj}")
+    if a.cmd == "episode":  # 剧集模式：建一集的目录（docs/22）
+        if skind(proj) != "season":
+            sys.exit("episode 要在剧目录（有 季.json）上用")
+        ep = a.args[0].replace("ep", "").zfill(2)
+        ed = os.path.join(proj, f"ep{ep}")
+        os.makedirs(os.path.join(ed, "logs"), exist_ok=True)
+        sd, e = load(proj), load(ed)
+        e.update(project=f"{sd.get('project', os.path.basename(proj))} 第{ep}集", video_models=sd.get("video_models", ["seedance"]))
+        e["confirm"]["story"] = "全季"
+        if sd.get("selftest"):
+            e["selftest"] = True
+        save(ed, e)
+        print(f"已建 {os.path.relpath(ed, ROOT)}。NEXT：把第 {ep} 集剧本拆成 {os.path.relpath(ed, ROOT)}/分镜.json（设定用剧目录的），用户确认剧本后 `confirm {os.path.relpath(ed, ROOT)} script`，再 run")
+        return 0
     if a.cmd == "selftest":
         return cmd_selftest(proj, a.update)
     if a.cmd == "qc":

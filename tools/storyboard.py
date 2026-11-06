@@ -85,16 +85,66 @@ class Bad(Exception):
     pass
 
 
+def _rd(path):
+    if not os.path.exists(path):
+        raise Bad(f"缺少 {os.path.basename(path)}（格式见 docs/19、docs/22，样例 examples/样例-便利店/）")
+    try:
+        return json.load(open(path, encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise Bad(f"{os.path.basename(path)} 不是合法 JSON：{e}")
+
+
+def series_kind(proj):
+    """剧集模式（docs/22）："season" = 剧目录（有 季.json），"episode" = 集目录（父目录有 季.json），None = 单片。"""
+    if os.path.exists(os.path.join(proj, "季.json")):
+        return "season"
+    if os.path.exists(os.path.join(os.path.dirname(proj), "季.json")) and not os.path.exists(os.path.join(proj, "设定.json")):
+        return "episode"
+    return None
+
+
+def episode_dirs(season_root):
+    season = _rd(os.path.join(season_root, "季.json"))
+    return [(e["ep"], os.path.join(season_root, f"ep{e['ep']}")) for e in season.get("episodes", [])]
+
+
 def load(proj):
-    def rd(name):
-        p = os.path.join(proj, name)
-        if not os.path.exists(p):
-            raise Bad(f"缺少 {name}（格式见 docs/19，样例 examples/样例-便利店/）")
-        try:
-            return json.load(open(p, encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            raise Bad(f"{name} 不是合法 JSON：{e}")
-    return rd("设定.json"), rd("分镜.json")
+    kind = series_kind(proj)
+    if kind == "episode":
+        root = os.path.dirname(proj)
+        bible, board = _rd(os.path.join(root, "设定.json")), _rd(os.path.join(proj, "分镜.json"))
+        board["_series"] = {"mode": "episode", "season": _rd(os.path.join(root, "季.json")), "ep": os.path.basename(proj)[2:], "root": root}
+        return bible, board
+    if kind == "season":  # 全季合并：只用来出全季资产文档和全季检查
+        bible, season = _rd(os.path.join(proj, "设定.json")), _rd(os.path.join(proj, "季.json"))
+        clips, eps = [], []
+        for ep, d in episode_dirs(proj):
+            p = os.path.join(d, "分镜.json")
+            if not os.path.exists(p):
+                continue
+            b = _rd(p)
+            eps.append((ep, b))
+            for i, c in enumerate(b.get("clips", [])):
+                c = dict(c, n=f"E{ep}-{c['n']}")
+                if i == 0:
+                    c.setdefault("time_jump", "换集")
+                clips.append(c)
+        return bible, {"clips": clips, "_series": {"mode": "season", "season": season, "episodes": eps, "root": proj}}
+    return _rd(os.path.join(proj, "设定.json")), _rd(os.path.join(proj, "分镜.json"))
+
+
+def char_map(bible):
+    """人物 + 状态变体（变体名也能进 cast，身高、音色、识别色随本人；docs/22 状态卡）。"""
+    m = {c["name"]: c for c in bible.get("characters", [])}
+    for c in bible.get("characters", []):
+        for k, v in enumerate(c.get("variants", []), 1):
+            m[v["name"]] = dict(c, name=v["name"], lock=v.get("lock", c.get("lock", "")), _base=c["name"], _stage=k,
+                                back_view=v.get("back_view", False))
+    return m
+
+
+def base_name(bible, name):
+    return char_map(bible).get(name, {}).get("_base", name)
 
 
 # ---------------- 校验 ----------------
@@ -131,7 +181,7 @@ def validate(bible, board, models=("seedance",)):
         E.append(f"people_recipe {bible['people_recipe']} 不存在")
     if need_en and not bible.get("music_en"):
         E.append("设定.json 缺 music_en：配乐的英文一两句（没有配乐写 \"N/A\"）" + EN)
-    chars = {c["name"]: c for c in bible["characters"]}
+    chars = char_map(bible)
     props = {p["name"]: p for p in bible.get("props", [])}
     locs = {l["name"]: l for l in bible["locations"]}
     crowds = {c["world"]: c for c in bible.get("crowds", [])}
@@ -396,7 +446,90 @@ def validate(bible, board, models=("seedance",)):
         W.append("全片每一镜都有台词：至少留一段不靠台词、只用画面和声音讲的戏（docs/20 第二节第 5 条）")
     look_check(bible, board, E, W)
     ai_weak_check(board, W)
+    if board.get("_series"):
+        series_check(bible, board, E, W)
     return E, W
+
+
+# ---------------- 剧集模式（docs/22） ----------------
+
+def _lines(clip):
+    return [s["line"]["text"] for s in clip.get("shots", []) if s.get("line")]
+
+
+def series_check(bible, board, E, W):
+    sr = board["_series"]
+    season = sr["season"]
+    cfg = season.get("series", {})
+    eps = [e["ep"] for e in season.get("episodes", [])]
+    chars = char_map(bible)
+    if bible.get("ratio", "16:9") != cfg.get("ratio", bible.get("ratio", "16:9")):
+        W.append(f"季.json 的画幅 {cfg.get('ratio')} 和 设定.json 的 ratio {bible.get('ratio', '16:9')} 不一致：以 设定.json 为准，改成一样")
+    if sr["mode"] == "episode":
+        ep = sr["ep"]
+        if ep not in eps:
+            E.append(f"ep{ep} 不在 季.json 的 episodes 里")
+            return
+        if board.get("ep") != ep:
+            E.append(f"分镜.json 要写 \"ep\": \"{ep}\"（和目录名一致）")
+        if len(str(board.get("hook", ""))) < 6:
+            E.append("分镜.json 缺 hook：这一集结尾的钩子（一个画面或一句台词，停在观众最想看下一集的地方），要和 季.json 这一集的 hook 一致")
+        if eps.index(ep) > 0 and len(str(board.get("opens_with", ""))) < 4:
+            W.append("分镜.json 缺 opens_with：这一集开头怎么接住上一集的钩子（第 1 条前几秒，或冷开场之后）")
+        clips = board.get("clips", [])
+        total = sum(s.get("dur", 0) for c in clips for s in c.get("shots", []))
+        lo, hi = cfg.get("ep_seconds", [0, 10 ** 6])
+        if not lo <= total <= hi:
+            W.append(f"这一集 {total:g} 秒，季设定每集 {lo}–{hi} 秒")
+        words = sum(len(SEP.sub("", t)) for c in clips for t in _lines(c))
+        dl, dh = cfg.get("dialogue_per_min", [0, 10 ** 6])
+        if total and not dl <= words / (total / 60) <= dh:
+            W.append(f"这一集台词 {words} 字，每分钟 {words / (total / 60):.0f} 字，季设定每分钟 {dl}–{dh} 字：太少撑不住一集，太多画面没有呼吸")
+        byn = {c["n"]: c for c in clips}
+        for c in clips:
+            ref = c.get("cold_open_of")
+            if ref:
+                if ref not in byn:
+                    E.append(f"第{c['n']}条 是冷开场，cold_open_of 指向的第{ref}条不存在")
+                elif not set(_lines(c)) <= set(_lines(byn[ref])):
+                    E.append(f"第{c['n']}条 是第{ref}条的冷开场（闪前），台词要一字不差地出现在第{ref}条里（后期用同一条录音）")
+            for name in c.get("cast", {}):
+                ch = chars.get(name, {})
+                base = bible_char(bible, ch.get("_base", name))
+                rv = base.get("reveal_ep") if base else None
+                if rv and ep < rv and not ch.get("back_view"):
+                    E.append(f"第{c['n']}条「{name}」：身份第 {rv} 集才揭开，之前只能用背影 / 遮脸的变体（variants 里写 back_view: true）")
+        return
+    # 全季
+    names = set(eps)
+    for e in season.get("episodes", []):
+        if len(str(e.get("summary", ""))) < 6 or len(str(e.get("hook", ""))) < 4:
+            E.append(f"季.json 第 {e.get('ep')} 集缺 summary 或 hook（每集 2–3 句剧情 + 一句结尾钩子）")
+        if not all(e.get(k) for k in ("titles", "blurb", "tags")):
+            W.append(f"季.json 第 {e.get('ep')} 集还没写发布文案（titles 3 个钩子标题、blurb 80–120 字简介、tags 5–8 个话题），出发布包时要用")
+    for f in season.get("foreshadow", []):
+        if f.get("plant") not in names or f.get("payoff") not in names:
+            E.append(f"伏笔「{f.get('what')}」的 plant / payoff 集数不在 episodes 里")
+        elif eps.index(f["payoff"]) < eps.index(f["plant"]):
+            E.append(f"伏笔「{f.get('what')}」回收在埋下之前")
+    have = {ep for ep, _ in sr.get("episodes", [])}
+    if have and len(have) < len(eps):
+        W.append(f"还没写分镜的集：{'、'.join(e for e in eps if e not in have)}（资产文档只包含已写分镜的集）")
+    stage = {}
+    for c in board.get("clips", []):  # 状态卡只进不退（受伤、疲惫、湿透……），除非写了 state_reset
+        for name in c.get("cast", {}):
+            ch = chars.get(name, {})
+            b, k = ch.get("_base", name), (0 if ch.get("back_view") else ch.get("_stage", 0))
+            if ch.get("back_view"):
+                continue
+            if k < stage.get(b, (0, ""))[0] and not c.get("state_reset"):
+                W.append(f"{c['n']}「{name}」退回了更早的状态（之前在 {stage[b][1]} 已经是更后面的状态卡）：状态卡只进不退，确有休息或治疗就写 state_reset")
+            if k >= stage.get(b, (0, ""))[0]:
+                stage[b] = (k, c["n"])
+
+
+def bible_char(bible, name):
+    return next((c for c in bible.get("characters", []) if c["name"] == name), None)
 
 
 # ---------------- 类型片库与时长档位（docs/21） ----------------
@@ -462,6 +595,7 @@ AI_WEAK = [  # Eian 2026-11-05 实测弱点 + docs/14 4.1（提醒，不拦）
     (re.compile(r"交叉|擦肩|穿过人群|绕过对方"), "人物交叉走位：容易穿模或换脸，改成一人静止一人移动"),
     (re.compile(r"由[^，。；、]{1,4}变[^，。；、]{1,4}|熄灭|亮起|灯灭|变暗|变亮"), "一镜内换光：写清光源在画里、只变这一处，其余光不变"),
 ]
+MOVING = re.compile(r"走|跑|进|出|飘|落|推|拉|转|抬|举|放|递|拿|扑|冲|倒|摇|晃|飞|喷|升|滑|流|拖|笑|抖|擦|拍|写|盖|按|撕|踩|抓|攥|松|拔|扫|砸|指|碰|伸|吹|滚|爬|跳|打|摔|翻|开|关|亮|闪|动|移|穿|扔|接|点|眨|张|闭|呼|吸|跪|站起|坐下|靠")
 SAME_TIME = re.compile(r"所有人|大家|众人|全体|一起|同时|齐刷刷|纷纷")
 ORDER_WORDS = re.compile(r"先|后|接着|随后|最后|依次|一个接一个")
 SEQ_WORDS = re.compile(r"然后|接着|随后|又|再")
@@ -479,6 +613,9 @@ def ai_weak_check(board, W):
                 m = rx.search(txt)
                 if m:
                     W.append(f"{st}「{m.group(0)}」：{why}")
+            if s.get("dur", 0) >= 3 and not s.get("move") and s.get("type") not in ("track", "pov") and not s.get("crowd") \
+                    and not s.get("line") and not MOVING.search(txt) and not c.get("stillness"):
+                W.append(f"{st} 这一镜什么在动？机器、人、焦点、光、前景物至少一样在动，否则画面像一张图片（Eian：画面不能死）；确实要静，在这条写 stillness")
             if SAME_TIME.search(txt) and not ORDER_WORDS.search(txt):
                 W.append(f"{st} 多人同时做同一个动作：真人的反应有先后，写清谁先谁后，否则模型会让所有人同一秒动（Eian 实测）")
             if s.get("type") in ("single", "ots", "track"):
@@ -599,11 +736,22 @@ def _lerp(p, q, f):
     return [p[i] + (q[i] - p[i]) * f for i in range(3)]
 
 
+def golden(cam, look, lens, face, ratio=0.12):
+    """挪注视点，让主体落在画面约 38% / 62%（Eian：每一秒截图都要好看）。
+    主体朝画面哪边看，就把他放在另一边，前面留出视线空间。"""
+    v = [look[i] - cam[i] for i in range(3)]
+    d = math.hypot(v[0], v[1]) or 1.0
+    right = [v[1] / d, -v[0] / d, 0.0]  # 画面向右的方向
+    sgn = 1.0 if face[0] * right[0] + face[1] * right[1] >= 0 else -1.0  # 朝右看 → 注视点右移 → 人落在左边 38%
+    shift = sgn * d * 2 * ratio * 18.0 / lens  # tan(半视场角) = 18 / 焦距（全画幅）
+    return [look[0] + right[0] * shift, look[1] + right[1] * shift, look[2]]
+
+
 class Clip:
     def __init__(self, bible, clip, li):
         self.b, self.c = bible, clip
         self.locs = {l["name"]: l for l in bible["locations"]}
-        self.chars = {c["name"]: c for c in bible["characters"]}
+        self.chars = char_map(bible)
         self.loc = self.locs[clip["location"]]
         self.origin = [li * 1000.0, 0.0, 0.0]
         self.marks = {k: K.add(self.origin, v) for k, v in self.loc["stage"]["marks"].items()}
@@ -662,7 +810,7 @@ class Clip:
                 keys.append((p["t"], self.pt(p["at"]), face, p.get("lean", 0)))
             dur = sum(s["dur"] for s in self.c["shots"])
             keys.append((dur, keys[-1][1], keys[-1][2], keys[-1][3]))
-            ci = [c["name"] for c in self.b["characters"] if c.get("kind") != "voice"].index(name)  # 和投喂包里的识别色说明同一套编号
+            ci = [c["name"] for c in self.b["characters"] if c.get("kind") != "voice"].index(self.chars[name].get("_base", name))  # 和投喂包里的识别色说明同一套编号
             out.append(K.person(name, PALETTE[ci % len(PALETTE)], self.height(name), keys))
         return out
 
@@ -722,7 +870,10 @@ class Clip:
             fg, tg = self.pos(s["fg"], t0), self.pos(subj, t0)
             axis = self.axis_pts(t0)
             p = K.ots(fg, self.height(s["fg"]), tg, axis, back=s.get("back", 0.9), lat=s.get("lat", 0.3))
-            return K.cam(t0, lens, p, K.head(tg, h))
+            look = K.head(tg, h)
+            if not s.get("center"):  # 过肩：被拍的人落在前景肩膀的另一侧（38% / 62%）
+                look = golden(p, look, lens, [fg[0] - p[0], fg[1] - p[1], 0.0], ratio=0.1)
+            return K.cam(t0, lens, p, look)
         if t == "pov":
             p = K.head(self.pos(subj, t0), h)
             lk = self.pos(s["look"], t0) if s["look"] in self.c["cast"] else self.pt(s["look"])
@@ -733,6 +884,8 @@ class Clip:
             side = [-d[1], d[0], 0]
             return [pos[0] + d[0] * dist + side[0] * dist * 0.2, pos[1] + d[1] * dist + side[1] * dist * 0.2, pos[2] + h * hr], K.head(pos, h)
         p0, look = front(t0)
+        if t == "single" and size not in ("特写", "大特写") and not s.get("center"):  # 黄金分割：人头放在画面 38% / 62%，不放正中（docs/21 第五节）
+            look = golden(p0, look, lens, self.face_dir(subj, t0))
         if t == "track":
             p1, _ = front(t0 + s["dur"])
             return K.cam(t0, lens, p0, look, p1, t0 + s["dur"])
@@ -903,10 +1056,10 @@ def build_specs(proj):
         if c["location"] not in seen:
             boxes += cl.boxes()
             seen.add(c["location"])
-    voice = {c["name"]: f"{c['name']}：{c['voice']}" for c in bible["characters"]}
+    voice = {n: f"{n}：{c['voice']}" for n, c in char_map(bible).items() if c.get("voice")}
     voice_en = {c["name"]: c["voice_en"] for c in bible["characters"] if c.get("kind") == "voice" and c.get("voice_en")}
     texts = dict(THREE=bible["three"], STYLE=zh, MUSIC=bible["music"], MUSIC_EN=bible.get("music_en"), VOICE=voice, LIP=bible.get("lip", LIP),
-                 ANCHOR=ANCHOR + bible.get("anchor_extra", ""))
+                 ANCHOR=ANCHOR + bible.get("anchor_extra", ""), RATIO=bible.get("ratio", "16:9"))
     if voice_en:
         texts["VOICE_EN"] = voice_en
     os.makedirs(os.path.join(proj, "预演规格"), exist_ok=True)

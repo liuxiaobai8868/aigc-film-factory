@@ -32,6 +32,7 @@
 | `docs/18-自动化流水线.md` | **剧本确认后默认走流水线**：`python3 tools/pipeline.py status|run projects/<项目>`，只照 NEXT 做；用户只确认故事、剧本和花费 |
 | `docs/19-分镜数据格式.md` | 剧本拆成 设定.json + 分镜.json 的格式与拆法；`tools/storyboard.py check` 校验；样例 `examples/样例-便利店/`；`pipeline.py selftest` 自测 |
 | `docs/21-类型片库与时长档位.md` | **立项先问**：用户挑类型卡（25 张：科幻、恐怖、悬疑、犯罪、武侠、奇幻、喜剧、怪兽、战争、爱情、剧情、动画）和时长档位（1 分钟内 → 10–15 分钟）；卡上的影调交给美术、摄影、角色、声音，写进 `设定.json` 的 `look`；`tools/genre.py --menu / --card / --tiers / --estimate` |
+| `docs/22-剧集模式.md` | **短剧、漫剧一集一集来**：剧目录放全季 `设定.json` + `季.json`，资产出一次各集共用；`pipeline.py episode <剧> 01` 建集，逐集确认剧本、跑流水线；钩子、卡点、状态卡（只进不退）、背影卡（`reveal_ep`）、冷开场、9:16、每集发布包；样例 `examples/样例-剧集/` |
 | `docs/20-顶级标准.md` | **全工厂最高标准**：不做等救主式电子垃圾；短片六个硬指标（对照《爱死机》）；故事内核闸门 A–H；每条视听丰富度预算与张力（不要四平八稳）；26 个岗位的顶级标准；自我进化规程（每个项目先研究 3 部顶级作品，每条审完把教训写成规则） |
 | `tools/` | `prompt_lint.py` 机检；`image_gen.py` 多接口出图（配置 `config/image_providers.json`，密钥 `.env`）；`previs/` 白模预演（规格 JSON → 视频） |
 
@@ -84,7 +85,7 @@
 
 ## 指令
 
-`~start [项目]` `~status` `~mode` `~genre`（类型菜单）`~tier`（时长档位与估价）`~style` `~story` `~script` `~direct` `~look` `~sets` `~cast` `~acting` `~sound` `~dialogue` `~drama [场]` `~action [场]` `~vfx [场]` `~image` `~registry` `~assets` `~board [场]` `~compile [条]` `~qa [条]` `~approve [条]` `~qc [条]` `~post` `~mix` `~help`（详见 `crew/00-showrunner/SKILL.md` 第八节）
+`~start [项目]` `~status` `~mode` `~genre`（类型菜单）`~tier`（时长档位与估价）`~expand <档位>`（扩写，docs/21 第四节）`~series`（剧集立项，docs/22）`~ep <集号>`（建集、跑一集）`~style` `~story` `~script` `~direct` `~look` `~sets` `~cast` `~acting` `~sound` `~dialogue` `~drama [场]` `~action [场]` `~vfx [场]` `~image` `~registry` `~assets` `~board [场]` `~compile [条]` `~qa [条]` `~approve [条]` `~qc [条]` `~post`（`tools/post.py` 粗剪）`~mix` `~help`（详见 `crew/00-showrunner/SKILL.md` 第八节）
 
 ## 初始化
 
