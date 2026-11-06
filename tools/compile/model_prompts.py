@@ -67,6 +67,10 @@ def hailuo(spec, part, short_duty_fn):
                         "(row 1 left to right = 1–7, row 2 = 8–14); only the numbered people named below appear, each at most once, "
                         "and none of them is a main character. The white backdrop and the lineup layout are not carried over.")
             keep.append(f"{lab}: attribute_transfer — faces, costumes and props of the numbered extras")
+        elif a["kind"] == "first":
+            defs.append(f"{lab}: the approved first frame of this clip, uploaded image {i}. The opening composition, the people's look, "
+                        "the set and the light start exactly as in this image, then move as the timeline describes.")
+            keep.append(f"{lab}: fully_preserved — opening composition, look and light")
         elif a["kind"] == "tail":
             defs.append(f"{lab}: the last frame of the previous clip, uploaded image {i}. It carries over only where each person stands, "
                         "which way they face, their pose, the state of their clothes, and the light, so this clip continues from it; "

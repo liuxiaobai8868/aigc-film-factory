@@ -11,6 +11,7 @@
   python3 tools/pipeline.py selftest examples/样例-便利店     自测：不花钱（占位图），从样例数据跑到投喂包，和标准产物逐字比对
   python3 tools/pipeline.py qc <项目目录> <第N条> <视频文件>   审片：切点、时长、分段音量、台词听写，写 logs/审片_第N条.md
   python3 tools/pipeline.py splice <项目目录> <第N条> <视频文件>  截这条视频的最后一帧到 交付/衔接/，下次 run 时接进下一条的投喂包（docs/07）
+  python3 tools/pipeline.py coldread <项目目录> 故事|投喂前|成片   冷读任务书：交给一个不带上下文的子代理，写一页问题清单（templates/冷读.md）
 
 阶段（顺序固定）：confirm → assets → images → asset_review → stress（可选）→ specs → previs → check_spec → geometry → framesheets
 → previs_review → compile → report。规则和每一步的含义见 docs/18-自动化流水线.md。
@@ -464,7 +465,57 @@ def st_framesheets(proj, d):
         hashes[c] = h
         if d["reviews"].get(k, {}).get("hash") != h:
             d["reviews"][k] = {"status": "pass" if offline(d) else "待目检", "hash": h}
+    if d.get("first_frames", True):
+        first_frames(proj)
     mark(d, "framesheets", hashes=hashes)
+
+
+FF_RISK = re.compile(r"雨|湿|帽|纹身|眼镜|首饰|项链|耳环|戒指|文字|招牌|屏幕|镜子|面具|印章|徽章")
+
+
+def first_frames(proj):
+    """首帧图（docs/14 第五节）：只给高风险的条——开场镜头里有雨、帽子、纹身、小道具、文字、镜子这类模型最容易画错的东西，
+    或这一条要接上一条的戏——写一张首帧图的出图提示词，构图取白模第一帧。出图要用户点头；定稿存 交付/首帧图/第N条.png，重跑自动进投喂包。"""
+    out_dir = os.path.join(proj, "交付", "首帧图")
+    rows = []
+    for c in clips(proj):
+        spec, _, mp4 = _clip_files(proj, c)
+        sh = spec["shots"][0]
+        body = re.sub(r"<[^>]*>", "", sh["body"])
+        why = sorted(set(FF_RISK.findall(body)))
+        reasons = ([f"开场镜头里有{'、'.join(why)}"] if why else []) + ([f"接第{spec['splice_in']['from']}条的戏"] if spec.get("splice_in") else [])
+        if not reasons:
+            continue
+        os.makedirs(out_dir, exist_ok=True)
+        frame = os.path.join(out_dir, f"{c}_白模构图.jpg")
+        if os.path.exists(mp4):
+            run(["ffmpeg", "-v", "error", "-y", "-ss", "0.04", "-i", mp4, "-frames:v", "1", "-q:v", "3", frame], check=False)
+        names = {f"@图片{i}": a.get("name") or a["tag"].lstrip("@") for i, a in enumerate(spec["assets"], 1)}
+        body = re.sub(r"@图片\d+", lambda m: names.get(m.group(0), m.group(0)), body)
+        nm = lambda a: (a.get("name") or a["tag"].lstrip("@")).replace("prop_", "")  # noqa: E731
+        refs = [a for a in spec["assets"] if a["kind"] == "scene" or nm(a) in body or (a["kind"] == "prop" and nm(a)[-2:] in body)]
+        still = body.split("；")[0].rstrip("。") + "。"  # 只要"画面里 + 机位"：首帧是动作开始之前的那一瞬间
+        ref_lines = ["参考图1：`交付/首帧图/" + os.path.basename(frame) + "`（白模构图）"] + [
+            f"参考图{i}：`交付/{a['file']}`（{a.get('name') or a['tag'].lstrip('@')}）" for i, a in enumerate(refs, 2)]
+        if spec.get("splice_in"):
+            ref_lines.append(f"参考图{len(refs) + 2}：`交付/{spec['splice_in']['file']}`（第{spec['splice_in']['from']}条出片后的尾帧，出完那条才有）")
+        prompt = (f"一张 {spec.get('ratio', '16:9')} 的电影画面，作为一段视频的第一帧，取这一镜开始的那一瞬间。"
+                  f"机位、景别、构图和人物位置完全照参考图1：灰色圆柱是人物的占位、方块是场景里的物件，只取位置，不画出白模本身。"
+                  f"{still}这一镜的动作还没开始。"
+                  + (f"人物的位置、姿态、服装状态和光，和最后一张参考图（上一条的尾帧）一致。" if spec.get("splice_in") else "")
+                  + f"人物、道具、场景的外观照后面的参考图，不继承参考图的灰底和版式。{spec['style']}画面里不出现可读的文字。")
+        rows += [f"## {c} · {spec['title']}", "", f"- 为什么要首帧图：{'；'.join(reasons)}", "- 参考图：" + "；".join(ref_lines),
+                 "- 推荐出图：Image 2.5（APIMart 2K，带参考图约 $0.045 / 张，docs/10）", f"- 定稿后存为 `交付/首帧图/{c}.png`，再 `run` 一次就会接进这一条的投喂包（只进第一段）。",
+                 "", "```", prompt, "```", ""]
+    doc = os.path.join(proj, "交付", "03-首帧图提示词.md")
+    if rows:
+        n = sum(1 for r in rows if r.startswith("## "))
+        open(doc, "w", encoding="utf-8").write("\n".join([
+            "# 首帧图提示词（可选）", "",
+            f"> 共 {n} 条值得加首帧图：开场镜头里有模型最容易画错的东西，或要接上一条的戏。只有一条视频的**第一帧**能用首帧图锁住；"
+            "其余镜头仍只靠白模和资产图。出图要先报张数和花费、用户点头（docs/09 第三个确认点）。目检通过的图存成 `交付/首帧图/第N条.png`。", ""] + rows))
+    elif os.path.exists(doc):
+        os.remove(doc)
 
 
 def st_previs_review(proj, d):
@@ -582,10 +633,40 @@ def st_report(proj, d):
     b = d["budget"]["images"]
     lines += ["", f"出图预算：批准 {b['approved']} 张，已用 {b['used']} 张。", "",
               f"投喂包：{', '.join(d['video_models'])}，在 `交付/投喂包/`。已知不提交的段落：{d.get('known_fails') or '无'}。", "",
-              ] + _curve(proj) + _composition(proj) + _colors(proj) + _sound(proj, d) + _cost(proj) + _packs(proj, d) + [
+              ] + _requirements(proj) + _curve(proj) + _composition(proj) + _colors(proj) + _sound(proj, d) + _cost(proj) + _first(proj) \
+        + _coldread(proj) + _packs(proj, d) + [
               "下一步：用户按投喂包出片（或接入出视频接口后由流水线提交），出完把视频交回审片（docs/04 24 分制 + docs/14 4.1 实拍教训）。"]
     open(os.path.join(proj, "logs", "流水线报告.md"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     mark(d, "report")
+
+
+def _requirements(proj):
+    """用户要求清单（logs/用户要求.md）：用户在对话里说过的硬要求，每次交付前逐条对照。"""
+    p = os.path.join(proj, "logs", "用户要求.md")
+    if not os.path.exists(p):
+        return ["## 用户要求", "", "没有 `logs/用户要求.md`：把用户在对话里说过的硬要求逐条记下（`pipeline.py new` 会建模板），交付前逐条对照。", ""]
+    items = [ln.strip() for ln in open(p, encoding="utf-8") if re.match(r"\s*- ", ln)]
+    return ["## 用户要求（交付前逐条对照）", ""] + (items or ["（文件里还没有条目）"]) + [""]
+
+
+def _first(proj):
+    p = os.path.join(proj, "交付", "03-首帧图提示词.md")
+    if not os.path.exists(p):
+        return []
+    todo = re.findall(r"^## (\S+)", open(p, encoding="utf-8").read(), re.M)
+    done = [c for c in todo if any(os.path.exists(os.path.join(proj, "交付", "首帧图", c + e)) for e in (".png", ".jpg"))]
+    return ["## 首帧图（可选）", "", f"{len(todo)} 条值得加首帧图（`交付/03-首帧图提示词.md`），约 ${0.045 * len(todo):.2f}；已定稿 {len(done)} 张"
+            + (f"：{'、'.join(done)}" if done else "") + "。出图要用户点头。", ""]
+
+
+COLD_POINTS = {"故事": ["01-故事.md", "03-剧本.md", "00-立项书.md"],
+               "投喂前": ["交付/01-资产提示词.md", "交付/投喂包/seedance", "logs/白模拼图_*.jpg", "交付/参考图定版"],
+               "成片": ["交付/成片", "logs/切点对照.jpg", "logs/出片记录.md"]}
+
+
+def _coldread(proj):
+    st = [f"{k}：{'已做' if os.path.exists(os.path.join(proj, 'logs', f'冷读_{k}.md')) else '未做'}" for k in COLD_POINTS]
+    return ["## 冷读（不带上下文的一页问题清单，templates/冷读.md）", "", "；".join(st) + "。`pipeline.py coldread <项目> <故事|投喂前|成片>` 生成任务。", ""]
 
 
 def _composition(proj):
@@ -814,7 +895,7 @@ def cmd_status(proj):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "new", "selftest", "qc", "splice", "episode"])
+    ap.add_argument("cmd", choices=["status", "run", "confirm", "approve", "review", "redo", "init", "new", "selftest", "qc", "splice", "episode", "coldread"])
     ap.add_argument("project")
     ap.add_argument("args", nargs="*")
     ap.add_argument("--until", choices=STAGES)
@@ -826,6 +907,22 @@ def main():
         print((r.stdout.strip().splitlines() or ["✗ post.py 自测没有输出：" + r.stderr[-400:]])[-1])
         return max(rc or 0, r.returncode)
     proj = os.path.abspath(a.project)
+    if a.cmd == "coldread":  # 冷读（templates/冷读.md）：给一个不带上下文的子代理的任务书
+        point = a.args[0] if a.args else ""
+        if point not in COLD_POINTS:
+            sys.exit(f"冷读点只有：{' / '.join(COLD_POINTS)}")
+        import glob
+        mats = [m for pat in COLD_POINTS[point] for m in sorted(glob.glob(os.path.join(proj, pat)))]
+        req = os.path.join(proj, "logs", "用户要求.md")
+        tpl = open(os.path.join(ROOT, "templates", "冷读.md"), encoding="utf-8").read()
+        brief = tpl.split("<!-- 任务书 -->", 1)[1].strip().replace("<冷读点>", point).replace("<项目>", proj).replace(
+            "<材料>", "\n".join(f"- {m}" for m in mats) or "- （这个点的材料还没有）").replace(
+            "<要求>", req if os.path.exists(req) else "（没有用户要求清单）").replace("<输出>", os.path.join(proj, "logs", f"冷读_{point}.md"))
+        out = os.path.join(proj, "logs", f"冷读_{point}_任务.md")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        open(out, "w", encoding="utf-8").write(brief + "\n")
+        print(brief + f"\n\n（任务书已写到 {os.path.relpath(out, ROOT)}。派一个全新的子代理，只把这份任务书给它；它写完后在报告里看结论。）")
+        return 0
     if a.cmd == "new":  # 单片 JSON 模式建项目（docs/18）：production.json + 立项书模板 + logs
         title = a.args[0] if a.args else os.path.basename(proj)
         os.makedirs(os.path.join(proj, "logs"), exist_ok=True)
@@ -835,6 +932,9 @@ def main():
         lx = os.path.join(proj, "00-立项书.md")
         if not os.path.exists(lx):
             open(lx, "w", encoding="utf-8").write(open(os.path.join(ROOT, "templates", "00-立项书.md"), encoding="utf-8").read().replace("<项目名>", title))
+        ur = os.path.join(proj, "logs", "用户要求.md")
+        if not os.path.exists(ur):
+            open(ur, "w", encoding="utf-8").write("# 用户要求\n\n> 用户在对话里说过的硬要求，一条一行，写清哪天说的；每次停下来、交付前逐条对照（流水线报告会列出来）。\n\n")
         fq = os.path.join(proj, "logs", "框架问题.md")
         if not os.path.exists(fq):
             open(fq, "w", encoding="utf-8").write("# 框架问题\n\n| # | 日期 | 阶段 | 问题 | 建议 | 状态 |\n|---|---|---|---|---|---|\n")

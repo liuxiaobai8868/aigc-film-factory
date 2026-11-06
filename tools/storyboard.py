@@ -781,14 +781,14 @@ def _lerp(p, q, f):
     return [p[i] + (q[i] - p[i]) * f for i in range(3)]
 
 
-def golden(cam, look, lens, face, ratio=0.12):
+def golden(cam, look, lens, face, ratio=0.12, hw=18.0):
     """挪注视点，让主体落在画面约 38% / 62%（Eian：每一秒截图都要好看）。
     主体朝画面哪边看，就把他放在另一边，前面留出视线空间。"""
     v = [look[i] - cam[i] for i in range(3)]
     d = math.hypot(v[0], v[1]) or 1.0
     right = [v[1] / d, -v[0] / d, 0.0]  # 画面向右的方向
     sgn = 1.0 if face[0] * right[0] + face[1] * right[1] >= 0 else -1.0  # 朝右看 → 注视点右移 → 人落在左边 38%
-    shift = sgn * d * 2 * ratio * 18.0 / lens  # tan(半视场角) = 18 / 焦距（全画幅）
+    shift = sgn * d * 2 * ratio * hw / lens  # tan(水平半视场角) = 半画幅宽 / 焦距；横屏 18 mm，竖屏 18 × 9/16
     return [look[0] + right[0] * shift, look[1] + right[1] * shift, look[2]]
 
 
@@ -800,6 +800,8 @@ class Clip:
         self.loc = self.locs[clip["location"]]
         self.origin = [li * 1000.0, 0.0, 0.0]
         self.marks = {k: K.add(self.origin, v) for k, v in self.loc["stage"]["marks"].items()}
+        self.vertical = bible.get("ratio") == "9:16"
+        self.hw = 18.0 * 9 / 16 if self.vertical else 18.0  # 水平半画幅（mm）：竖屏时传感器长边是竖的
 
     def pt(self, x):
         if isinstance(x, str):
@@ -872,14 +874,21 @@ class Clip:
         mv = s.get("move")
         if not mv or mv.get("kind") not in MOVES or len(cm["keys"]) > 1:
             return cm
-        p, lk, kind = cm["keys"][0]["pos"], cm["look_at"], mv["kind"]
+        if mv["kind"] == "handheld":
+            cm["handheld"] = 0.015
+            return cm
+        cm["keys"].append({"t": t0 + s["dur"], "pos": self.move_end(cm["keys"][0]["pos"], cm["look_at"], mv)})
+        return cm
+
+    @staticmethod
+    def move_end(p, lk, mv):
+        kind = mv["kind"]
+        if kind == "handheld":
+            return list(p)
         v = _v(p, lk)
         L = math.hypot(v[0], v[1]) or 1.0
         f, side = [v[0] / L, v[1] / L, 0.0], [-v[1] / L, v[0] / L, 0.0]
         amt = float(mv.get("amount", 0.4))  # 推拉：走掉机位到主体距离的比例；横移 / 升降：米 = amount × 距离
-        if kind == "handheld":
-            cm["handheld"] = 0.015
-            return cm
         if kind in ("push", "pull"):
             d = L * amt * (1 if kind == "push" else -1)
             end = [p[0] + f[0] * d, p[1] + f[1] * d, p[2]]
@@ -892,8 +901,7 @@ class Clip:
             ang = math.radians(35 * amt / 0.4) * (1 if kind == "orbit_left" else -1)
             dx, dy = p[0] - lk[0], p[1] - lk[1]
             end = [lk[0] + dx * math.cos(ang) - dy * math.sin(ang), lk[1] + dx * math.sin(ang) + dy * math.cos(ang), p[2]]
-        cm["keys"].append({"t": t0 + s["dur"], "pos": [round(x, 4) for x in end]})
-        return cm
+        return [round(x, 4) for x in end]
 
     def _camera(self, s, t0):
         t, size = s["type"], s.get("size")
@@ -903,7 +911,11 @@ class Clip:
                          t0 + s["dur"] if c.get("end") else None)
         if t == "wide":
             e = self.loc["stage"]["views"][s["view"]] if s.get("view") else self.loc["stage"]["establish"]
-            return K.cam(t0, e.get("lens", 35), self.pt(e["pos"]), self.pt(e["look"]))
+            p, lk, lens = self.pt(e["pos"]), self.pt(e["look"]), e.get("lens", 35)
+            if self.vertical and s.get("who") and not s.get("keep_view"):
+                mv = s.get("move") if (s.get("move") or {}).get("kind") in MOVES else None
+                p, lk, lens = self.fit_vertical(p, lk, lens, s["who"], t0, s["dur"], mv)
+            return K.cam(t0, lens, p, lk)
         subj = s.get("subject")
         if t == "insert":
             o = self.pt(s["object"])
@@ -917,7 +929,7 @@ class Clip:
             p = K.ots(fg, self.height(s["fg"]), tg, axis, back=s.get("back", 0.9), lat=s.get("lat", 0.3))
             look = K.head(tg, h)
             if not s.get("center"):  # 过肩：被拍的人落在前景肩膀的另一侧（38% / 62%）
-                look = golden(p, look, lens, [fg[0] - p[0], fg[1] - p[1], 0.0], ratio=0.1)
+                look = golden(p, look, lens, [fg[0] - p[0], fg[1] - p[1], 0.0], ratio=0.1, hw=self.hw)
             return K.cam(t0, lens, p, look)
         if t == "pov":
             p = K.head(self.pos(subj, t0), h)
@@ -945,13 +957,62 @@ class Clip:
         if t == "single" and size not in ("特写", "大特写") and not s.get("center"):  # 黄金分割：人头放在画面 38% / 62%，不放正中（docs/21 第五节）
             if other:
                 op = self.pos(other, t0)
-                look = golden(p0, look, lens, [op[0] - p0[0], op[1] - p0[1], 0.0])
+                look = golden(p0, look, lens, [op[0] - p0[0], op[1] - p0[1], 0.0], hw=self.hw)
             else:
-                look = golden(p0, look, lens, self.face_dir(subj, t0))
+                look = golden(p0, look, lens, self.face_dir(subj, t0), hw=self.hw)
         if t == "track":
             p1, _ = front(t0 + s["dur"])
             return K.cam(t0, lens, p0, look, p1, t0 + s["dur"])
         return K.cam(t0, lens, p0, look)
+
+    def fit_vertical(self, p, look, lens, names, t0, dur, mv=None, margin=0.82):
+        """竖屏全景自动机位（docs/22 第七节）：横屏的全景机位放进 9:16，两侧的人会出画。
+        和几何检查取同样的时刻（25% / 50% / 75%），连运镜一起算：先把机位转向这些人的正中，
+        装不下再换广一点的镜头（最广 18 mm），还装不下就沿视线往后退（最多 20 米）。"""
+        people = [n for n in names if n in self.c.get("cast", {}) and self.chars.get(n, {}).get("kind") not in ("giant", "voice")]
+        if not people:
+            return p, look, lens
+        fr = (0.25, 0.5, 0.75)
+        heads = [[K.head(self.pos(n, t0 + x * dur), self.height(n)) for n in people] for x in fr]
+
+        def angles(pp, lk):
+            end = self.move_end(pp, lk, mv) if mv else pp
+            out = []
+            for x, hs in zip(fr, heads):
+                c = [pp[i] + (end[i] - pp[i]) * x for i in range(3)]
+                v = [lk[0] - c[0], lk[1] - c[1]]
+                L = math.hypot(*v) or 1.0
+                f, r = [v[0] / L, v[1] / L], [v[1] / L, -v[0] / L]
+                out += [math.atan2((q[0] - c[0]) * r[0] + (q[1] - c[1]) * r[1], (q[0] - c[0]) * f[0] + (q[1] - c[1]) * f[1]) for q in hs]
+            return min(out), max(out)
+        lim = lambda ln: math.atan(margin * self.hw / ln)  # noqa: E731
+        lo, hi = angles(p, look)
+        if -lim(lens) <= lo and hi <= lim(lens):
+            return p, look, lens
+        def turn(lk, ang):  # 只转水平方向，高度不变
+            v = [lk[0] - p[0], lk[1] - p[1]]
+            d = math.hypot(*v) or 1.0
+            f, r = [v[0] / d, v[1] / d], [v[1] / d, -v[0] / d]
+            ff = [f[0] * math.cos(ang) + r[0] * math.sin(ang), f[1] * math.cos(ang) + r[1] * math.sin(ang)]
+            return [p[0] + ff[0] * d, p[1] + ff[1] * d, lk[2]], ff
+        for _ in range(3):  # 装得下就只转最少的角度，尽量保住原来的构图；装不下才转到正中
+            lo, hi = angles(p, look)
+            m = lim(lens)
+            ang = (lo + hi) / 2 if hi - lo > 2 * m else (hi - m if hi > m else (lo + m if lo < -m else 0.0))
+            if abs(ang) < 1e-4:
+                break
+            look, ff = turn(look, ang)
+        look, ff = turn(look, 0.0)
+        steps = sorted((x for x in K.LENS_DEG if isinstance(x, (int, float)) and 18 <= x < lens), reverse=True)  # 只用有视场角写法的焦段
+        while steps and max(-angles(p, look)[0], angles(p, look)[1]) > lim(lens):
+            lens = steps.pop(0)
+        for _ in range(40):  # 每次后退 0.5 米
+            lo, hi = angles(p, look)
+            if max(-lo, hi) <= lim(lens):
+                break
+            p = [p[0] - ff[0] * 0.5, p[1] - ff[1] * 0.5, p[2]]
+            look = [look[0] - ff[0] * 0.5, look[1] - ff[1] * 0.5, look[2]]
+        return [round(x, 4) for x in p], [round(x, 4) for x in look], lens
 
     def axis_pts(self, t):
         pair = next(((s["fg"], s["subject"]) for s in self.c["shots"] if s["type"] == "ots"), None)

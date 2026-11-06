@@ -120,6 +120,33 @@ def split_for(spec, model):
     return parts
 
 
+def prompt_for(spec, model, style, part):
+    auds, _ = pick_audio(spec, model, part[2])
+    sp = dict(spec, _audio=auds)
+    return build_prompt(sp, model, style, part) if model == "seedance" else MP.BUILD[model](sp, part, short_duty)[0]
+
+
+def fit_chars(spec, model, style, parts):
+    """提示词超过这家的字数上限（海螺 H3 7000 字）时，在镜头之间再切一刀，两段都不短于该模型下限；切不开的照旧报 FAIL。"""
+    cap, lo = LIMITS[model]["chars"], MIN_DUR[model]
+    out, queue, n_cut = [], list(parts), 0
+    while queue:
+        part = queue.pop(0)
+        t0, t1, shots = part
+        if len(shots) < 2 or len(prompt_for(spec, model, style, part)) <= cap:
+            out.append(part)
+            continue
+        cands = [k for k in range(1, len(shots)) if shots[k]["t0"] - t0 >= lo and t1 - shots[k]["t0"] >= lo]
+        if not cands:
+            out.append(part)
+            continue
+        k = min(cands, key=lambda k: abs(shots[k]["t0"] - (t0 + t1) / 2))
+        queue[0:0] = [(t0, shots[k]["t0"], shots[:k]), (shots[k]["t0"], t1, shots[k:])]
+        n_cut += 1
+    note = f"提示词超过 {cap} 字，自动在镜头之间多切了 {n_cut} 刀，本条共 {len(out)} 段（按顺序出，后一段接前一段尾帧）" if n_cut else ""
+    return out, note
+
+
 def lines_of(body):
     return re.findall(r"\{([^}]*)\}", body)
 
@@ -147,6 +174,8 @@ def short_duty(a, ref):
         return f"{ref} 是「{n}」的外形、材质、颜色和比例（不继承灰底和设定图版式）。"
     if a["kind"] == "crowd":
         return f"{ref} 是「{n}」的群众演员：画面里的路人从这张图里按编号取长相、服装和道具（第 1 排从左到右 1–7，第 2 排 8–14），每人只出现一次；这些人都不是主角；不继承白底和排队版式。"
+    if a["kind"] == "first":
+        return f"{ref} 是本条的第一帧：开场的构图、人物外观、场景和光以它为准，之后按时间轴动起来。"
     if a["kind"] == "tail":
         return f"{ref} 是上一条视频的最后一帧：只取人物的位置、朝向、姿态、服装和伤湿状态，以及光，让这一条接得上；不作本条首帧构图，不继承它的画质。"
     if a["kind"] == "prop":
@@ -309,11 +338,22 @@ def compile_one(spec, model, style, out_root):
             tail_note.append(f"INFO  本条接第{sp['from']}条：那条出片后跑 `python3 tools/pipeline.py splice <项目> 第{sp['from']}条 <视频>` 截尾帧，再 run 重编，尾帧会作为参考图接进来")
         else:
             tail_note.append(f"WARN  参考图已满 {lim['images']} 张，第{sp['from']}条尾帧没接进来")
+    ff = next((f"首帧图/第{spec['clip']}条{e}" for e in (".png", ".jpg") if os.path.exists(os.path.join(base, f"首帧图/第{spec['clip']}条{e}"))), None)
+    if ff:  # 用户点头出过、目检过的首帧图（docs/14 第五节）：只给本条第一段，放在最后，不打乱原来的图号
+        if len(spec["assets"]) < lim["images"]:
+            spec = dict(spec, assets=spec["assets"] + [{"tag": "@first", "file": ff, "kind": "first", "name": f"第{spec['clip']}条首帧",
+                                                         "duty": "@图片N — 本条的第一帧：开场的构图、人物外观、场景和光以它为准，之后按时间轴动起来。"}])
+        else:
+            tail_note.append(f"WARN  参考图已满 {lim['images']} 张，首帧图没接进来")
     previs = os.path.join(base, spec["previs"])
-    parts = split_for(spec, model)
+    parts, resplit = fit_chars(spec, model, style, split_for(spec, model))
+    if resplit:
+        tail_note.append(f"INFO  {resplit}")
     made = []
+    whole = spec
     for k, part in enumerate(parts, 1):
         t0, t1, shots = part
+        spec = whole if k == 1 else dict(whole, assets=[a for a in whole["assets"] if a["kind"] != "first"])
         name = f"第{spec['clip']}条" + (f"_{k}" if len(parts) > 1 else "")
         d = os.path.join(out_root, model, name)
         if os.path.isdir(d):
