@@ -452,6 +452,17 @@ def validate(bible, board, models=("seedance",)):
             for key in ("allow_occlude", "allow_small"):
                 if key in sh and not isinstance(sh[key], list):
                     E.append(f"第{c.get('n')}条 镜{k} {key} 要写成名字列表，如 [\"程姐\"]（写 true 会让白模检查崩溃）")
+    for c in board.get("clips", []):  # 后期字段（tools/post.py）
+        tr = c.get("transition")
+        if tr is not None and tr not in ("cut", "black", "dissolve"):
+            E.append(f"第{c.get('n')}条 transition 只能是 cut / black / dissolve，现在是 {tr!r}")
+        ts = c.get("transition_sec")
+        if ts is not None and not (isinstance(ts, (int, float)) and 0.1 <= ts <= 2):
+            E.append(f"第{c.get('n')}条 transition_sec 要写 0.1–2 之间的秒数")
+        if c.get("grade") not in (None, "keep"):
+            E.append(f"第{c.get('n')}条 grade 只能写 \"keep\"（这一条后期不调色）")
+        if "light_change" in c and len(str(c["light_change"])) < 4:
+            E.append(f"第{c.get('n')}条 light_change 写清剧情里光怎么变（如\"怪兽影子压过来，整条街暗一档\"），后期就不会把它当成模型变暗补回来")
     cl = board.get("clips", [])
     for a, b in zip(cl, cl[1:]):
         if a.get("location") == b.get("location") and not b.get("time_jump") and a.get("model") and b.get("model") and a["model"] != b["model"]:

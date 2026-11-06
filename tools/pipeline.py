@@ -821,7 +821,10 @@ def main():
     ap.add_argument("--update", action="store_true", help="selftest：确认新产物正确后更新标准产物")
     a = ap.parse_args()
     if a.cmd == "selftest" and a.project == "all":  # 两套样例都跑：单片 + 剧集
-        return max(cmd_selftest(os.path.join(ROOT, "examples", e), a.update) for e in ("样例-便利店", "样例-剧集"))
+        rc = max(cmd_selftest(os.path.join(ROOT, "examples", e), a.update) for e in ("样例-便利店", "样例-剧集"))
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "post.py"), "--selftest"], capture_output=True, text=True)
+        print((r.stdout.strip().splitlines() or ["✗ post.py 自测没有输出：" + r.stderr[-400:]])[-1])
+        return max(rc or 0, r.returncode)
     proj = os.path.abspath(a.project)
     if a.cmd == "new":  # 单片 JSON 模式建项目（docs/18）：production.json + 立项书模板 + logs
         title = a.args[0] if a.args else os.path.basename(proj)
