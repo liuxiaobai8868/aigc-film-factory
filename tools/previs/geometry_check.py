@@ -175,7 +175,8 @@ def frame_cover(cam, cp, pts, mine):
     return {k: v / (nx * ny) for k, v in cnt.items()}
 
 
-rows, axis_sides, comp = [], {}, []  # comp：构图统计（不拦，docs/21 第五节）
+import math  # noqa: E402
+rows, axis_sides, comp, side = [], {}, [], []  # comp：构图统计（不拦，docs/21 第五节）；side：两人同框侧拍（不拦）
 dg = bpy.context.evaluated_depsgraph_get()
 for sh in spec["shots"]:
     L = sh["t1"] - sh["t0"]
@@ -303,6 +304,16 @@ for sh in spec["shots"]:
             # 机位离轴线很近（正打、正反打的正面）不算哪一侧
             if "人类视角" not in sh["name"] and not sh.get("new_axis") and off > 1.5:
                 axis_sides[sh["id"]] = "左" if cross > 0 else "右"
+        # 两人同框侧拍（2026-11-07，docs/14 第三节 2.5）：中景以上两人同框，机位视线和两人连线接近 90° 就是正侧面，只统计不拦
+        duo = [n for n in main if n in people and n not in GIANTS]
+        if frac == 0.5 and len(duo) >= 2 and (sh.get("struct", {}).get("type") == "wide" or re.search(r"中景|全景", sh.get("body", ""))) and not re.search(r"近景|特写", sh.get("body", "").split("；")[0]):
+            pa = bpy.data.objects[duo[0]].matrix_world.translation
+            pb = bpy.data.objects[duo[1]].matrix_world.translation
+            ab, mid = (pb - pa).xy, ((pa + pb) / 2 - cp).xy
+            if ab.length > 0.3 and mid.length > 0.3:
+                ang = math.degrees(math.acos(max(-1.0, min(1.0, abs(ab.dot(mid)) / (ab.length * mid.length)))))
+                if ang > 75:
+                    side.append((sh, duo[0], duo[1], ang))
     # 精准白模（4.0 alpha.8）：每个节拍发生后 0.3 秒，做动作的人（伸手类看手）或道具必须在画面里、不被挡住
     for bt in sh.get("struct", {}).get("beats") or []:
         t = sh["t0"] + bt["t"] + 0.5  # 动作起势 0.4 秒之后再看
@@ -380,4 +391,10 @@ if comp:
     for sh, p, x, eye, mid in comp:
         tag = "居中平视" if (eye and mid) else ("居中" if mid else ("黄金分割附近" if 0.32 <= x <= 0.44 or 0.56 <= x <= 0.68 else "偏边"))
         lines.append(f"| {sh['id']} {sh['name']} | {p} | {x:.0%} | {tag} |")
+if side:
+    lines += ["", "## 两人同框侧拍（只统计，不拦；docs/14 第三节 2.5）", "",
+              "中景以上两人同框，机位接近两人连线的正侧面：画面没有纵深，打戏像横版游戏。对峙、打斗建议转到 30–60° 斜角；文戏有意为之可以不改。", "",
+              "| 镜头 | 两人 | 视线和连线夹角 |", "|---|---|---|"]
+    for sh, a_, b_, ang in side:
+        lines.append(f"| {sh['id']} {sh['name']} | {a_}、{b_} | {ang:.0f}° |")
 open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")

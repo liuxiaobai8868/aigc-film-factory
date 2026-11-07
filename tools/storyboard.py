@@ -42,8 +42,8 @@ def move_text(mv, lang="zh"):
     if mv["kind"] == "handheld":
         return kind[0] if lang == "zh" else kind[1]
     if lang == "zh":
-        return f"镜头{sp[0]}{kind[0]}" + (f"到{mv['to']}" if mv.get("to") else "")
-    return f"{kind[1]} {sp[1]}"
+        return f"镜头{sp[0]}{kind[0]}" + (f"到{mv['to']}" if mv.get("to") else "") + (f"，跟随{mv['follow']}" if mv.get("follow") else "")
+    return f"{kind[1]} {sp[1]}" + (f", following {mv['follow_en']}" if mv.get("follow_en") else "")
 
 
 def shot_rank(s):
@@ -63,7 +63,12 @@ BOXCOLOR = {"wood": [0.35, 0.25, 0.18], "white": [0.92, 0.92, 0.9], "stone": [0.
 LIP = ("对白：普通话，自然口语。所有角色只说花括号里的台词；每句台词只有说话的那一个角色动嘴，其余角色闭着嘴；画外音不对任何人的口型；"
        "人声干净贴近，有人说话时配乐和环境声自动压低。画面全程是纯影像，没有字幕。")
 ANCHOR = "人物都是正常的人体结构：两只手各五根手指。"
-SAVIOR = re.compile(r"金手指|系统(发|奖|签到)|签到|认亲|亲孙子|赘婿|战神|龙王|跪地求|求复合|豪门|一夜暴富|神豪|重生复仇|打脸")  # docs/20 第一节：等救主结构
+SAVIOR = re.compile(r"金手指|系统(发|奖|签到)|签到|认亲|亲孙子|赘婿|战神|龙王|跪地求|求复合|一夜暴富|神豪")  # docs/20 第一节：等救主结构
+SAVIOR_SOFT = re.compile(r"豪门|重生复仇|打脸")  # 4.0 alpha.9：主流母题本身不拦（docs/23 第一节、docs/11 货架 E），只提醒查一遍主角是不是自己选择、付了代价
+TAGS = ("铺垫", "推进", "压", "放", "反转", "揭示", "钩", "余韵")  # 功能标签（docs/23 第五节第 6 条）
+HOOK_TYPES = ("生死悬停", "身份揭晓", "半句话", "更大对手", "反常陈述", "宣战", "认知颠覆", "亲密打断", "喜剧定格", "物证特写", "时间戳循环", "规则宣告")  # docs/23 第六节
+SPEED_TIERS = ("静", "慢", "常速", "快", "极速")  # 打戏速度档（crew/17 第 5 节）
+FEED = re.compile(r"你忘了吗|你忘了.{0,6}吗|还记得.{0,10}吗|三年前|五年前|十年前|你明明知道|我是.{1,8}(集团|总裁|董事长|少爷|大小姐)")  # 灌输式台词（docs/23 第四节第 7 条）
 CORE_KEYS = {"want": "主角想要什么", "need": "他真正需要什么", "choice": "关键时刻他自己做的选择", "cost": "这个选择让他失去什么",
              "image": "能说出主题的那个画面"}
 ACTION_RE = re.compile(r"打斗|出拳|挥拳|一拳|踢向|踢中|飞踢|挥刀|砍向|刺向|格挡|摔倒|扑倒|撞(上|向|飞|倒)|躲闪|翻滚|扭打|掐住|推倒|追赶|追逐|搏斗|过肩摔|踩塌|砸向|砸碎|甩向|甩飞|一脚踹")  # 武戏：要写受力因果 hit
@@ -236,6 +241,12 @@ def validate(bible, board, models=("seedance",)):
     hit = SAVIOR.search(" ".join(str(x) for x in [core, bible.get("three", ""), bible.get("title", "")]))
     if hit:
         E.append(f"故事内核里出现「{hit.group(0)}」：这是等救主结构（docs/20 第一节、第三节 F），本工厂不做；回到故事阶段换内核")
+    soft = SAVIOR_SOFT.search(" ".join(str(x) for x in [core, bible.get("three", ""), bible.get("title", "")]))
+    if soft:
+        W.append(f"故事内核里有「{soft.group(0)}」：主流母题可以用（docs/11 货架 E），但查一遍——赢是主角自己选择、付了代价换来的，不是身份揭晓或别人出手（docs/20 第三节 F）")
+    for k, zh in (("promise", "情绪承诺：观众看的是什么感"), ("dilemma", "两难：做 A 失 X，不做失 Y")):
+        if core and len(str(core.get(k, "")).strip()) < 4:
+            W.append(f"core.{k} 没写：{zh}（docs/23 第一节，4.0 alpha.9 起建议写）")
     for w, v in bible["worlds"].items():
         if v.get("recipe") not in recipes:
             E.append(f"世界「{w}」的 recipe {v.get('recipe')} 不在 config/style_recipes.json（用 tools/mj_style.py --recipes 看）")
@@ -509,6 +520,8 @@ def validate(bible, board, models=("seedance",)):
     all_shots = [s for c in board.get("clips", []) for s in c.get("shots", [])]
     if all_shots and all(s.get("line") for s in all_shots):
         W.append("全片每一镜都有台词：至少留一段不靠台词、只用画面和声音讲的戏（docs/20 第二节第 5 条）")
+    script_check(bible, board, E, W)
+    action_check(board, W)
     look_check(bible, board, E, W)
     ai_weak_check(board, W)
     leak_check(bible, board, E)
@@ -589,6 +602,99 @@ def validate(bible, board, models=("seedance",)):
     return E, W
 
 
+def script_check(bible, board, E, W):
+    """剧本层（4.0 alpha.9，docs/23）：伏笔回收、功能标签、台词节奏和灌输句式。只有伏笔顺序报错，其余提醒。"""
+    clips = board.get("clips", [])
+    order = [str(c.get("n")) for c in clips]
+    for f in bible.get("foreshadow", []):
+        p, q = str(f.get("plant", "")), str(f.get("payoff", ""))
+        if board.get("_series"):
+            continue  # 剧集的伏笔在 季.json 里按集查
+        if p not in order or q not in order:
+            E.append(f"伏笔「{f.get('what')}」的 plant / payoff（{p} → {q}）不是分镜里的条号")
+        elif order.index(q) < order.index(p):
+            E.append(f"伏笔「{f.get('what')}」回收（第{q}条）在埋设（第{p}条）之前")
+        elif p == q:
+            W.append(f"伏笔「{f.get('what')}」在同一条里埋下又回收：观众来不及记住，至少隔一条")
+    tags = []
+    for c in clips:
+        t = c.get("tag")
+        if t is not None and t not in TAGS:
+            W.append(f"第{c.get('n')}条 tag「{t}」不在功能标签里：{'/'.join(TAGS)}")
+        tags.append(t)
+    for i in range(2, len(tags)):
+        if tags[i] and tags[i] == tags[i - 1] == tags[i - 2]:
+            W.append(f"第{clips[i - 2].get('n')}–{clips[i].get('n')}条 连续三条都是「{tags[i]}」：节奏单调，中间换一个放、反转或揭示（docs/23 第五节）")
+            break
+    for c in clips:
+        lens_ = [len(SEP.sub("", t)) for t in _lines(c)]
+        for i in range(2, len(lens_)):
+            a = lens_[i - 2:i + 1]
+            if min(a) >= 5 and max(a) - min(a) <= 1:
+                W.append(f"第{c.get('n')}条 连续三句台词都是 {a[0]} 字左右：节奏死板，长短交错，或让一句变成回问一个词（docs/23 第四节）")
+                break
+        for t in _lines(c):
+            m = FEED.search(t)
+            if m:
+                W.append(f"第{c.get('n')}条 台词「{t}」里有「{m.group(0)}」：像灌输（明知故说、自报家门），改成动作、道具或第三人说出来（docs/23 第四节第 7 条）")
+
+
+def action_check(board, W):
+    """打戏节奏（4.0 alpha.9，crew/17 第 5 节，来自《列阵》）：速度档、慢镜比例、最重一击的位置、重击后的反应镜、表演泄漏。只提醒。"""
+    lv = {"L1": 1, "L2": 2, "L3": 3, "L4": 4}
+    clips = board.get("clips", [])
+    for c in clips:
+        shots = c.get("shots", [])
+        for k, s in enumerate(shots, 1):
+            ac = s.get("acting")
+            if ac:
+                try:
+                    pr, am, ct = (int(ac.get(x, 0)) for x in ("pressure", "amplitude", "control"))
+                except (TypeError, ValueError):
+                    W.append(f"第{c.get('n')}条 镜{k} acting 的 pressure / amplitude / control 要写 1–5 的整数")
+                    continue
+                if ct >= 4 and pr >= 4 and len(str(ac.get("leak", ""))) < 4:
+                    W.append(f"第{c.get('n')}条 镜{k} 高压力（{pr}）+ 高控制（{ct}）：要写 acting.leak，情绪从哪里漏出来（下眼睑一跳、喉结滚一下、手停在半空），否则会演成面瘫（crew/08）")
+                if am > pr:
+                    W.append(f"第{c.get('n')}条 镜{k} 外在幅度（{am}）大于内在压力（{pr}）：演过了，会像表情包（crew/08 三轴）")
+            sp = s.get("speed")
+            if sp is not None and sp not in SPEED_TIERS:
+                W.append(f"第{c.get('n')}条 镜{k} speed「{sp}」要是 {'/'.join(SPEED_TIERS)} 之一")
+            w = lv.get((s.get("hit") or {}).get("weight"))
+            if w and w >= 3 and k == len(shots) and not c.get("splice_reaction"):
+                W.append(f"第{c.get('n')}条 镜{k} 是 {s['hit']['weight']} 重击，又是这一条最后一镜：每次重击要给两镜（接触点 + 受力方的反应），后面补一个反应镜（crew/17 镜头规则）")
+        sps = [s.get("speed") for s in shots]
+        for i in range(2, len(sps)):
+            if sps[i] and sps[i] == sps[i - 1] == sps[i - 2]:
+                W.append(f"第{c.get('n')}条 镜{i - 1}–{i + 1} 连续三镜都是「{sps[i]}」速度档：同一档最多连续两镜（crew/17 第 5 节）")
+                break
+    # 动作段：连着的、有 hit 的条（同一场）合起来算
+    runs, cur = [], []
+    for c in clips:
+        has = any(s.get("hit") for s in c.get("shots", []))
+        if has and cur and cur[-1].get("location") == c.get("location"):
+            cur.append(c)
+        else:
+            if cur:
+                runs.append(cur)
+            cur = [c] if has else []
+    if cur:
+        runs.append(cur)
+    for run in runs:
+        seq = [s for c in run for s in c.get("shots", [])]
+        total = sum(s.get("dur", 0) for s in seq)
+        name = f"第{run[0].get('n')}" + (f"–{run[-1].get('n')}" if len(run) > 1 else "") + "条"
+        slow = sum(s.get("dur", 0) for s in seq if s.get("speed") == "慢")
+        if total and slow / total > 0.12:
+            W.append(f"{name} 动作段里慢镜占 {slow / total:.0%}：慢镜不超过 12%，只给接触点、表情、道具这种信息帧（crew/17 第 5 节）")
+        ws = [(lv.get((s.get("hit") or {}).get("weight"), 0), i) for i, s in enumerate(seq)]
+        best = max(ws) if ws else (0, 0)
+        if best[0] and total >= 8:
+            t = sum(s.get("dur", 0) for s in seq[:best[1]]) + seq[best[1]].get("dur", 0) / 2
+            if not 0.7 <= t / total <= 0.92:
+                W.append(f"{name} 最重的一击落在动作段的 {t / total:.0%} 处：放到 75–90% 附近，前面留给试探和优势轮转，后面留给余波（crew/17 第 5 节）")
+
+
 def _ref_names():
     names = set()
     for c in _cfg("genre_library.json")["类型"]:
@@ -596,7 +702,7 @@ def _ref_names():
             names |= {x.strip("《》 ") for x in re.findall(r"《[^》]+》", r)}
             names |= {x.strip() for x in re.split(r"[；;、/（）()《]", re.sub(r"《[^》]*》", "/", r)) if 2 <= len(x.strip()) <= 12 and "只学" not in x and "顶级" not in x and "改编" not in x}
     stop = {"爱死机", "docs", "11 #010", "工厂已有", "系列", "照明娱乐式 3D", "高畑勋的作品", "九十年代港片", "天劫外包",  # 说明文字、自家项目
-            "回路", "燃烧", "潜伏", "放逐", "枪火", "异形", "招魂", "封神", "聊斋", "哪吒", "后窗", "侠女", "1917"}  # 常用词、公版题材：不当片名拦
+            "回路", "燃烧", "潜伏", "放逐", "枪火", "异形", "招魂", "封神", "聊斋", "哪吒", "后窗", "侠女", "1917", "功夫", "密探"}  # 常用词、公版题材：不当片名拦
     return {n for n in names if len(n) >= 2 and n not in stop} | {"高畑勋"}
 
 
@@ -666,6 +772,21 @@ def series_check(bible, board, E, W):
             E.append(f"季.json 第 {e.get('ep')} 集缺 summary 或 hook（每集 2–3 句剧情 + 一句结尾钩子）")
         if not all(e.get(k) for k in ("titles", "blurb", "tags")):
             W.append(f"季.json 第 {e.get('ep')} 集还没写发布文案（titles 3 个钩子标题、blurb 80–120 字简介、tags 5–8 个话题），出发布包时要用")
+    seq = season.get("episodes", [])
+    for key, allowed, zh in (("hook_type", HOOK_TYPES, "同一类钩子"), ("tag", TAGS, "同一个功能标签")):
+        vals = [e.get(key) for e in seq]
+        for e, v in zip(seq, vals):
+            if v is not None and v not in allowed:
+                W.append(f"季.json 第 {e.get('ep')} 集 {key}「{v}」要是 {'/'.join(allowed)} 之一（docs/23）")
+        for i in range(2, len(vals)):
+            if vals[i] and vals[i] == vals[i - 1] == vals[i - 2]:
+                W.append(f"季.json 第 {seq[i - 2].get('ep')}–{seq[i].get('ep')} 集连用{zh}「{vals[i]}」：观众会麻木，换一种（docs/22、docs/23 第六节）")
+                break
+    tg = [e.get("tag") for e in seq]
+    for i in range(3, len(tg)):
+        if all(x == "压" for x in tg[i - 3:i + 1]):
+            W.append(f"季.json 第 {seq[i - 3].get('ep')}–{seq[i].get('ep')} 集连着四集都是「压」：压抑不超过 3 集必须释放（docs/22）")
+            break
     for f in season.get("foreshadow", []):
         if f.get("plant") not in names or f.get("payoff") not in names:
             E.append(f"伏笔「{f.get('what')}」的 plant / payoff 集数不在 episodes 里")
@@ -1424,6 +1545,8 @@ class Clip:
         if s.get("hit"):
             h = s["hit"]
             parts.append(f"动作因果：{h['support']}，{h['force']}，{h['contact']}，{h['reaction']}，{h['result']}")
+        if (s.get("acting") or {}).get("leak"):
+            parts.append(f"表演：{s['acting']['leak']}")
         if s.get("vfx"):
             v = s["vfx"]
             parts.append(f"特效：从{v['source']}发出，{v['direction']}，{v['scale']}，{v['speed']}；{v['medium']}；{v['light']}；{v['decay']}")
@@ -1474,7 +1597,7 @@ class Clip:
                 object=s.get("object"), object_en=s.get("object_en"), hand=s.get("hand"), hand_en=s.get("hand_en"), view=s.get("view"),
                 action=[{"at": a.get("at"), "zh": a.get("text"), "en": a.get("en")} if isinstance(a, dict) else {"zh": a} for a in acts],
                 line=s.get("line"), sound=[{"zh": x.get("text"), "en": x.get("en"), "source": x.get("source")} for x in s.get("sound", []) if isinstance(x, dict)],
-                crowd=s.get("crowd"), beats=s.get("beats"), hit_en=(s.get("hit") or {}).get("en"), vfx_en=(s.get("vfx") or {}).get("en"),
+                crowd=s.get("crowd"), beats=s.get("beats"), hit_en=(s.get("hit") or {}).get("en"), vfx_en=(s.get("vfx") or {}).get("en"), acting_en=(s.get("acting") or {}).get("leak_en"),
                 move=({"kind": s["move"]["kind"], "en": move_text(s["move"], "en")} if s.get("move") and s["move"].get("kind") in MOVES else None)).items() if v}  # 结构化镜头：可灵 / 海螺 / 万相的专用编译器用
             shots.append(sh)
             t0 += s["dur"]

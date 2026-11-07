@@ -140,7 +140,7 @@ def hailuo(spec, part, short_duty_fn):
         for act in st.get("action", []):
             en = act.get("en") or act.get("zh")
             text += f" At {mmss(a + act['at'])}, {en}." if act.get("at") is not None else f" {en[0].upper() + en[1:]}."
-        for key in ("hit_en", "vfx_en"):  # 武戏受力因果、特效七要素
+        for key in ("hit_en", "vfx_en", "acting_en"):  # 武戏受力因果、特效七要素、表演泄漏（crew/08 三轴）
             if st.get(key):
                 text += f" {st[key][0].upper() + st[key][1:].rstrip('.')}."
         ln = st.get("line")

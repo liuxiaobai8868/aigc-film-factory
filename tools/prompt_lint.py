@@ -54,6 +54,9 @@ def check(prompt, duration, ban=()):
         warns.append("一镜到底 ≥15 秒且没有 @视频 结构参考：机位与人物距离变化大时先做白模预演（crew/25）")
     if "慢动作" in prompt and not re.search(r"\d(?:\.\d+)?\s*倍", prompt):
         warns.append("写了慢动作但没写倍速：慢动作只给一整个镜头并写倍速，如「18–21 秒整段 0.4 倍慢动作」（圣经第 29 条）")
+    empty = [w for w in ("电影感", "大师级", "超高清", "8K", "高级感", "史诗感", "masterpiece", "highly detailed", "UE5", "虚幻引擎") if w in prompt]
+    if empty:
+        warns.append(f"有空词 {empty}：删掉以后画面仍要具体（克制测试，docs/06 第六节第 8 条）")
     n = len(prompt)
     if n > LIMIT:
         issues.append(f"字符数 {n} 超过硬上限 {LIMIT}")
