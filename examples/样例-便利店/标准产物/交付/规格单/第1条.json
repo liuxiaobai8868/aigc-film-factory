@@ -10,7 +10,7 @@
  "model_hint": "Seedance 2.5 + 白模",
  "previs": "预演/previs_三点_第1条.mp4",
  "previs_spec": "../预演规格/第1条.json",
- "previs_colors": "黄色圆柱=阿青，蓝色圆柱=老周，灰白方块=场景和道具",
+ "previs_colors": "黄色圆柱=阿青，蓝色圆柱=老周，灰白方块=场景和道具，肉色小方块=特写里的手",
  "assets": [
   {
    "tag": "@阿青",

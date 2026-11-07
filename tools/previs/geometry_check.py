@@ -59,9 +59,12 @@ shutil.rmtree(tmp, ignore_errors=True)
 sc = bpy.context.scene
 FPS = sc.render.fps
 spec = json.load(open(SHOTSPEC, encoding="utf-8"))
+PV = json.load(open(PREVIS, encoding="utf-8"))
+GIANTS = {p["name"] for p in PV.get("people", []) if p.get("shape") == "giant"}
 markers = sorted(((m.frame - 1) / FPS, m.camera) for m in sc.timeline_markers)
 people = {o.name for o in bpy.data.objects if o.type == "EMPTY" and bpy.data.objects.get(o.name + "_head")}
-boxes = [o for o in bpy.data.objects if o.type == "MESH" and not any(o.name.startswith(p + "_") for p in people)]
+boxes = [o for o in bpy.data.objects if o.type == "MESH" and not any(o.name.startswith(p + "_") for p in people)
+         and not o.name.startswith("fx_")]  # 特效代理（碎石、纸屑、裂缝、巨物的臂）是要拍的东西，不当障碍
 TALL = [o for o in boxes if o.dimensions.z > 6 * max(o.dimensions.x, o.dimensions.y, 1e-6) and o.dimensions.z > 3]
 
 
@@ -76,7 +79,14 @@ def cam_at(t):
 def inside(o, p):
     mn = Vector(min(v[i] for v in (o.matrix_world @ Vector(c) for c in o.bound_box)) for i in range(3))
     mx = Vector(max(v[i] for v in (o.matrix_world @ Vector(c) for c in o.bound_box)) for i in range(3))
-    return all(mn[i] + 1e-4 < p[i] < mx[i] - 1e-4 for i in range(3))
+    if not all(mn[i] + 1e-4 < p[i] < mx[i] - 1e-4 for i in range(3)):
+        return False
+    if len(o.data.vertices) <= 8:  # 方块：包围盒就是它本身
+        return True
+    # 圆柱、圆锥、环（巨物的根须和枝是斜的，包围盒比本体大得多）：看离点最近的面，点在面的背面才算在里面
+    inv = o.matrix_world.inverted()
+    ok, loc, nrm, _i = o.closest_point_on_mesh(inv @ p)
+    return bool(ok) and (inv @ p - loc).dot(nrm) < 0
 
 
 def owner(obj):
@@ -106,6 +116,65 @@ def subjects(body):
     return main, fg, partial
 
 
+NOT_HAND = {"sit", "sit_ground", "kneel", "kowtow", "look", "nod", "run", "walk", "laugh", "bend", "crouch", "dragged", "struggle", "pick", "lean_back", "fall"}
+
+
+def focus_points(sh, main, partial, tl):
+    """这一镜真正要拍到的点：主体的头；只露手脚的特写看手或脚；插入镜头里写明了手、脚、鞋的，看节拍里做动作那个人的手或脚。
+    手常常是伸进画面来的，只在这个人的节拍进行中（tl 是镜内秒数）查；脚整镜都查。"""
+    pts = []
+    for p in main:
+        pts.append((p, bpy.data.objects[p + "_head"].matrix_world.translation.copy()))
+    st = sh.get("struct", {})
+    text = st.get("object", "") + " ".join(a.get("zh", "") for a in st.get("action", []))
+    who = list(partial)
+    if st.get("type") == "insert" and re.search(r"脚|鞋|手", text):
+        who += [b["who"] for b in st.get("beats") or [] if b.get("who") in people]
+    feet = re.search(r"脚|鞋", st.get("object", "")) or (re.search(r"光脚|抬脚", text) and "的手" not in sh.get("body", "")[:30])
+    for p in dict.fromkeys(who):
+        if feet:
+            pts.append((p, bpy.data.objects[p].matrix_world.translation + Vector((0, 0, 0.05))))
+        elif any(b.get("who") == p and b.get("do") not in NOT_HAND and b["t"] + 0.4 <= tl <= (sh["t1"] - sh["t0"] if b.get("hold") else b["t"] + b.get("dur", 1.5))
+                 for b in st.get("beats") or []):
+            h = bpy.data.objects.get(p + "_handR")
+            if h:
+                pts.append((p, h.matrix_world.translation.copy()))
+    return pts
+
+
+def ignorable(ob, mine):
+    """mine 里的物件整个不算前景；mine 里的人只有手和胳膊不算（递东西、攥手腕时伸进画面的手），身子挡住了照样算。
+    名字以 * 开头的是这一镜的焦点人物，整个人都不算。"""
+    k = owner(ob)
+    if k.startswith("fx_"):
+        return True
+    if "*" + k in mine or (k in mine and k not in people):
+        return True
+    return k in mine and ("_hand" in ob.name or "_arm" in ob.name)
+
+
+def frame_cover(cam, cp, pts, mine):
+    """从镜头往画面 14×8 个点打射线：落在主体前面（比主体近 0.25 米以上）的东西，各占画面多少。
+    地面、主体自己不算。查的是"画面大半被前景占了"——整屏红轿壁、满屏抬轿人的腿（《好日子》第 6 条镜 2、镜 8）。"""
+    if not pts:
+        return {}
+    dist = min((q - cp).length for _p, q in pts)
+    fr = [cam.matrix_world @ v for v in cam.data.view_frame(scene=sc)]  # 右上、右下、左下、左上
+    nx, ny, cnt = 14, 8, {}
+    for i in range(nx):
+        for j in range(ny):
+            u, w = (i + 0.5) / nx, (j + 0.5) / ny
+            top = fr[3].lerp(fr[0], u)
+            bot = fr[2].lerp(fr[1], u)
+            d = (top.lerp(bot, w) - cp).normalized()
+            hit, loc, _n, _i, ob, _m = sc.ray_cast(dg, cp, d, distance=max(dist * 0.5, min(dist * 0.9, dist - 0.25)))
+            if not hit or ob.name.endswith("_Floor") or ignorable(ob, mine):
+                continue
+            k = owner(ob)
+            cnt[k] = cnt.get(k, 0) + 1
+    return {k: v / (nx * ny) for k, v in cnt.items()}
+
+
 rows, axis_sides, comp = [], {}, []  # comp：构图统计（不拦，docs/21 第五节）
 dg = bpy.context.evaluated_depsgraph_get()
 for sh in spec["shots"]:
@@ -127,6 +196,54 @@ for sh in spec["shots"]:
             if inside(o, cp):
                 notes.append(f"{t:.1f}s 镜头在「{o.name}」里面")
                 level = "FAIL"
+        for o in [x for x in bpy.data.objects if x.type == "MESH" and owner(x) in people]:  # 镜头钻进人的身体里，整幅画面是一块颜色（《好日子》第 1 条镜 4）
+            if inside(o, cp):
+                notes.append(f"{t:.1f}s 镜头在「{owner(o)}」的身体里")
+                level = "FAIL"
+                break
+        pts = focus_points(sh, main, partial, t - sh["t0"])
+        mine = {"*" + p for p, _q in pts}
+        st_ = sh.get("struct", {})
+        if st_.get("type") == "insert":  # 特写里做动作的人、被拿的道具、动作的对象都是主体，不算前景
+            for b in st_.get("beats") or []:
+                mine |= {b.get("who"), "prop_" + b["prop"] if b.get("prop") else None, str(b.get("target", "")).split(".")[0]}
+            mine |= set(partial)
+        if not pts and st_.get("type") == "insert":  # 拍物件的特写：物件就在镜头对准的点上（第 3 条镜 3 轿帘被腿和轿壁占满）
+            pv = [x for x in PV.get("shots", []) if x.get("start", 0) <= t + 1e-6]
+            if pv and pv[-1].get("look_at"):
+                la = pv[-1]["look_at"]
+                q = bpy.data.objects[la].matrix_world.translation.copy() if isinstance(la, str) else Vector(la)
+                pts = [("_object", q)]
+                mine |= {o.name for o in boxes if inside(o, q) or o.name.startswith("代理_")}  # 对准点所在的物件（轿帘就是花轿的一面）、特写的代理块都是主体
+        cov = frame_cover(cam, cp, pts, mine)
+        tot = sum(cov.values())
+        # 人和道具挡住三成就算；布景（门框、镜框、墙）做前景框可以多占一些，过肩人物最多占一半
+        big = [k for k, v in cov.items() if v > (0.5 if k in fg else 0.3 if ((k in people and k not in GIANTS) or k.startswith("prop_")) else 0.45)]  # 巨物在画面里是布景的分量
+        if tot > 0.55 or big:  # 过肩前景可以占一侧，但不能占掉半个画面；allow_occlude 不豁免这一条
+            worst = max(cov, key=cov.get)
+            notes.append(f"{t:.1f}s 前景占了画面 {tot:.0%}（最多的是「{worst}」{cov[worst]:.0%}），主体没拍到：换机位或把前景挪开")
+            level = "FAIL"
+        for p, q in pts:  # 主体自己太大：特写里头塞满了画面
+            vq = world_to_camera_view(sc, cam, q)
+            if p not in main and p != "_object":  # 手、脚特写：那只手或脚要在画里，而且射线先打到的是它自己（第 6 条镜 8：抬轿人的腿挡住了脚）
+                part = "脚" if (q - bpy.data.objects[p].matrix_world.translation).length < 0.1 else "手"
+                if not (0 <= vq.x <= 1 and 0 <= vq.y <= 1 and vq.z > 0):
+                    notes.append(f"{t:.1f}s「{p}」的{part}不在画面里")
+                    level = "FAIL"
+                    continue
+                d = q - cp
+                hit, hl, _n, _i, ob, _m = sc.ray_cast(dg, cp, d.normalized(), distance=d.length)
+                if hit and (hl - cp).length < d.length - 0.12 and not ignorable(ob, mine) and owner(ob) not in ok_occ and not ob.name.endswith("_Floor"):
+                    notes.append(f"{t:.1f}s「{p}」的{part}被「{owner(ob)}」挡住")
+                    level = "FAIL"
+            if p in main and vq.z > 0 and "大特写" not in sh.get("body", ""):
+                r = 0.12 * 1.65  # 头的半径（rig 的头球）
+                hd = bpy.data.objects[p + "_head"]
+                r = max(hd.dimensions) / 2 if hd.dimensions.length > 0 else r
+                up = world_to_camera_view(sc, cam, q + cam.matrix_world.to_3x3() @ Vector((0, r, 0)))
+                if abs(up.y - vq.y) * 2 > 0.9:
+                    notes.append(f"{t:.1f}s「{p}」的头占了画高 {abs(up.y - vq.y) * 2:.0%}，特写也要留出下巴和肩：镜头退后或换短焦")
+                    level = "FAIL" if level == "FAIL" else "WARN"
         if frac == 0.5 and main and sh.get("struct", {}).get("type") in ("single", "ots", "track"):
             hd0 = bpy.data.objects[main[0] + "_head"].matrix_world.translation
             v0 = world_to_camera_view(sc, cam, hd0)
@@ -139,21 +256,24 @@ for sh in spec["shots"]:
             body = bpy.data.objects[p + "_body"]
             v = world_to_camera_view(sc, cam, head)
             if not (0 <= v.x <= 1 and 0 <= v.y <= 1 and v.z > 0):
+                if p in sh.get("allow_exit", []) and frac >= 0.5:  # 跑出画面是这一镜要的（"扭头就跑"）：后半段出画不算
+                    continue
                 notes.append(f"{t:.1f}s「{p}」的头不在画面里")
                 level = "FAIL"
                 continue
             top = body.matrix_world @ Vector((0, 0, body.dimensions.z / 2))
-            feet = body.matrix_world @ Vector((0, 0, -body.dimensions.z / 2))
+            feet = bpy.data.objects[p].matrix_world.translation  # 人的根节点在脚底（关节小人的 _body 只是躯干）
             hgt = abs(world_to_camera_view(sc, cam, head).y - world_to_camera_view(sc, cam, feet).y)
             if hgt < 0.06 and p not in sh.get("allow_small", []):
                 notes.append(f"{t:.1f}s「{p}」只占画高 {hgt:.0%}，太小")
                 level = "FAIL" if level == "FAIL" else "WARN"
             d = head - cp
             hit, loc, _n, _i, obj, _m = sc.ray_cast(dg, cp, d.normalized(), distance=d.length)
-            if hit and owner(obj) != p and owner(obj) not in ok_occ and (loc - cp).length < d.length - 0.05:
+            if hit and owner(obj) != p and owner(obj) not in ok_occ and not obj.name.startswith("fx_") and (loc - cp).length < d.length - 0.05:
                 who = owner(obj)
-                if who in fg:
-                    notes.append(f"{t:.1f}s「{p}」被前景「{who}」挡住（规格写了前景虚化，属有意遮挡；确认嘴没被挡）")
+                if who in fg:  # 前景过肩可以挡住画面一角，但挡住了主体的头就是没拍到（《好日子》第 2 条镜 4：站着的人挡住坐着的人）
+                    notes.append(f"{t:.1f}s「{p}」的头被前景「{who}」挡住：过肩只该挡住画面一侧，把机位往侧面挪（lat）或抬高")
+                    level = "FAIL" if level == "FAIL" else "WARN"
                 else:
                     notes.append(f"{t:.1f}s「{p}」被「{who}」挡住")
                     level = "FAIL" if level == "FAIL" else "WARN"
@@ -183,7 +303,69 @@ for sh in spec["shots"]:
             # 机位离轴线很近（正打、正反打的正面）不算哪一侧
             if "人类视角" not in sh["name"] and not sh.get("new_axis") and off > 1.5:
                 axis_sides[sh["id"]] = "左" if cross > 0 else "右"
+    # 精准白模（4.0 alpha.8）：每个节拍发生后 0.3 秒，做动作的人（伸手类看手）或道具必须在画面里、不被挡住
+    for bt in sh.get("struct", {}).get("beats") or []:
+        t = sh["t0"] + bt["t"] + 0.5  # 动作起势 0.4 秒之后再看
+        if t > sh["t1"]:
+            t = sh["t1"] - 0.05
+        sc.frame_set(int(round(1 + t * FPS)))
+        dg = bpy.context.evaluated_depsgraph_get()
+        cam = cam_at(t)
+        if cam is None:
+            continue
+        sc.camera = cam
+        cp = cam.matrix_world.translation
+        if bt.get("do") == "hide" or bt.get("unseen") or not (bt.get("text") or bt.get("prop")):
+            continue  # 只查写进提示词的节拍和道具：没写 text 的是背景表演（坐着、扶着），不要求每一镜都拍到
+        insert = sh.get("struct", {}).get("type") == "insert"
+        if bt.get("prop"):
+            cands, label = [bpy.data.objects.get("prop_" + bt["prop"])], bt["prop"]
+        else:
+            hand = "_handL" if bt.get("arm") == "L" else "_handR"
+            cands = [bpy.data.objects.get(bt["who"] + hand)] + ([] if insert else [bpy.data.objects.get(bt["who"] + "_head")])
+            label = bt["who"]
+        cands = [o for o in cands if o is not None]
+        if not cands:
+            continue
+        seen = [o for o in cands if (lambda w: 0 <= w.x <= 1 and 0 <= w.y <= 1 and w.z > 0)(world_to_camera_view(sc, cam, o.matrix_world.translation))]
+        loc = (seen or cands)[0].matrix_world.translation
+        if not seen:
+            notes.append(f"{t:.1f}s 节拍「{label} {bt.get('do')}」不在画面里")
+            level = "FAIL"
+            continue
+        d = loc - cp
+        hit, hl, _n, _i, ob, _m = sc.ray_cast(dg, cp, d.normalized(), distance=d.length)
+        if hit and (hl - cp).length < d.length - 0.08 and owner(ob) not in ok_occ and not ob.name.startswith(label) and not ob.name.startswith(("prop_", "fx_")) \
+                and not (owner(ob) == str(bt.get("target", "")).split(".")[0] and ("_hand" in ob.name or "_arm" in ob.name)):  # 攥住对方的手腕：对方的手不算挡
+            notes.append(f"{t:.1f}s 节拍「{label} {bt.get('do')}」被「{owner(ob)}」挡住")
+            level = "FAIL" if level == "FAIL" else "WARN"
     rows.append((sh, level, sorted(set(notes), key=notes.index)))
+
+# 速度：白模是 @视频1，模型照着它的动作节奏生成；人走得像快进，成片也会急、会抽（《好日子》第 4 条抬轿人 0.8 秒冲了 13 米）。
+# 画面里能看到的每一段移动：走 ≤ 2 米/秒，跑（run 姿态）≤ 5 米/秒，年纪大的人（年龄写在 speed_cap）按各自上限；切点处 0.15 秒以内的跳位不算（换了时空）。
+import math  # noqa: E402
+cut_ts = sorted(x["start"] for x in PV["shots"])[1:]
+caps = spec.get("speed_caps", {})
+
+
+def _running(p, ta, tb):
+    return any(q.get("pose") == "run" and q["t0"] < tb and q["t1"] > ta for q in p.get("poses", []))
+
+
+movers = [(p["name"], sorted(((k["t"], k["pos"]) for k in p["keys"]), key=lambda x: x[0]), p) for p in PV.get("people", [])]
+movers += [("prop_" + pr["name"], sorted(((k["t"], k["at"]) for k in pr.get("keys", []) if "at" in k), key=lambda x: x[0]), {}) for pr in PV.get("props", [])]
+fast = []
+for name, ks, p in movers:
+    for (ta, a), (tb, b) in zip(ks, ks[1:]):
+        d, dt = math.dist(a[:2], b[:2]), tb - ta
+        if d < 0.3 or dt <= 0 or (dt <= 0.15 and any(ta - 1e-6 <= c <= tb + 1e-6 for c in cut_ts)):
+            continue
+        lim = caps.get(name, 5.0 if _running(p, ta, tb) else 2.0)
+        if d / dt > lim:
+            fast.append(f"「{name}」{ta:.1f}–{tb:.1f} 秒走了 {d:.1f} 米（{d / dt:.1f} 米/秒，上限 {lim:g}）")
+if fast:
+    rows.append(({"id": "-", "name": "速度", "t0": 0, "t1": spec["duration"]}, "FAIL",
+                 fast[:12] + ["人走得像快进：加长这一镜、缩短这段路，或者让跳位发生在切点上（换了时空）"]))
 
 if len(set(axis_sides.values())) > 1:
     rows.append(({"id": "-", "name": "轴线", "t0": 0, "t1": spec["duration"]}, "WARN",

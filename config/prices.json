@@ -11,6 +11,16 @@
    "来源": "Eian 2026-11-05 文章（火山方舟 API，以账单为准）"
   },
   {
+   "model": "seedance_apimart",
+   "名称": "Seedance 2.5（APIMart，tools/produce.py）",
+   "api": "seedance-2.5",
+   "每百万token_含视频输入": 42.0,
+   "每百万token": 70.0,
+   "币种": "CNY",
+   "计费": "token = (输出秒数 + 参考视频秒数) × 宽 × 高 × 24 ÷ 1024；720p 每秒 21600 token",
+   "来源": "火山方舟官方价（含视频输入 ¥42 / 百万 token，不含 ¥70），APIMart 未公开，以账单 data.cost 为准，出完第一条校准"
+  },
+  {
    "model": "seedance_mini",
    "名称": "Seedance 2.0 mini",
    "api": "doubao-seedance-2-0-mini-260615",

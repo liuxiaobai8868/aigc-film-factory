@@ -397,12 +397,15 @@ def _clip_files(proj, c):
     return spec, prev_spec, mp4
 
 
+PREVIS_CODE = [os.path.join(TOOLS, "previs", f) for f in ("build_from_spec.py", "common.py")]  # 白模代码改了（光、巨物代理……）也要重渲
+
+
 def st_previs(proj, d):
     hashes = d["pipeline"].get("previs", {}).get("hashes", {})
     done = []
     for c in clips(proj):
         spec, prev_spec, mp4 = _clip_files(proj, c)
-        h = sha(prev_spec)
+        h = sha(prev_spec, *PREVIS_CODE)
         if os.path.exists(mp4) and hashes.get(c) == h:
             continue
         run([PY, os.path.join(TOOLS, "previs", "render_previs.py"), prev_spec, "--out", os.path.dirname(mp4)])
@@ -417,7 +420,7 @@ def st_geometry(proj, d):
     for c in clips(proj):
         spec, prev_spec, mp4 = _clip_files(proj, c)
         sp = os.path.join(proj, "交付", "规格单", c + ".json")
-        h = sha(prev_spec, sp)
+        h = sha(prev_spec, sp, *PREVIS_CODE, os.path.join(TOOLS, "previs", "geometry_check.py"))
         if hashes.get(c) == h:
             continue
         rep = os.path.join(proj, "logs", f"几何检查_{c}.md")
@@ -465,9 +468,80 @@ def st_framesheets(proj, d):
         hashes[c] = h
         if d["reviews"].get(k, {}).get("hash") != h:
             d["reviews"][k] = {"status": "pass" if offline(d) else "待目检", "hash": h}
+    problems = [x for c in clips(proj) for x in frame_audit(proj, c)]
     if d.get("first_frames", True):
         first_frames(proj)
-    mark(d, "framesheets", hashes=hashes)
+    bad = [x for x in problems if x.startswith("ERROR")]
+    if bad and not offline(d):
+        raise Stop("白模逐帧检查没过：\n" + "\n".join(bad), "空白画面：给这一镜补道具（prop_states / beats）、换机位，或确属有意就在这一镜写 allow_blank: true；"
+                   "节拍看不出动作：检查节拍的 who / target 是否在画面里、动作幅度够不够；改完再 run（拼图在 logs/白模逐帧_第N条.jpg）")
+    mark(d, "framesheets", hashes=hashes, notes=problems)
+
+
+def frame_audit(proj, c):
+    """精准白模的机检（4.0 alpha.8）：每秒 4 帧抽白模，
+    1) 每镜中段近乎纯色 → 空白画面（ERROR，除非 allow_blank）；
+    2) 每个节拍发生后 0.6 秒内画面几乎没变 → 看不出动作（WARN）；
+    3) 出一张逐帧拼图 logs/白模逐帧_第N条.jpg：一行一镜，标镜头号，节拍那一帧加红框。"""
+    from PIL import Image, ImageDraw, ImageFont, ImageStat, ImageChops
+    spec, _, mp4 = _clip_files(proj, c)
+    if not os.path.exists(mp4):
+        return []
+    tmp = os.path.join(proj, "logs", "_frames_" + c)
+    shutil.rmtree(tmp, ignore_errors=True)
+    os.makedirs(tmp)
+    run(["ffmpeg", "-v", "error", "-y", "-i", mp4, "-vf", "fps=4,scale=240:-2", os.path.join(tmp, "f_%04d.png")])
+    files = sorted(os.listdir(tmp))
+    frames = [Image.open(os.path.join(tmp, f)).convert("RGB") for f in files]
+    for f in files:
+        os.remove(os.path.join(tmp, f))
+    os.rmdir(tmp)
+    if not frames:
+        return []
+    fr = lambda t: frames[min(len(frames) - 1, max(0, int(t * 4)))]  # noqa: E731
+    board = {str(x["n"]): x for x in json.load(open(os.path.join(proj, "分镜.json"), encoding="utf-8"))["clips"]} if os.path.exists(os.path.join(proj, "分镜.json")) else {}
+    raw = board.get(c.replace("第", "").replace("条", ""), {}).get("shots", [])
+    out, rows = [], []
+    for k, sh in enumerate(spec["shots"]):
+        t0, t1 = sh["t0"], sh["t1"]
+        src = raw[k] if k < len(raw) else {}
+        sds = [ImageStat.Stat(fr(t0 + (t1 - t0) * q).convert("L")).stddev[0] for q in (0.3, 0.5, 0.7)]
+        if max(sds) < 6 and not src.get("allow_blank"):
+            out.append(f"ERROR {c} 镜{sh['id']} {sh['name']}：画面几乎是纯色（{max(sds):.1f}），白模里这一镜什么都没拍到")
+        beat_ts = []
+        for bt in src.get("beats", []):
+            ta = t0 + bt["t"]
+            beat_ts.append(ta)
+            if not (bt.get("text") or bt.get("prop")) or bt.get("do") == "hide" or bt.get("unseen"):
+                continue  # 只查写进提示词的节拍和道具（没写 text 的坐着、扶着是背景表演）
+            a, b = fr(max(t0, ta - 0.1)).convert("L"), fr(min(t1 - 0.05, ta + 0.8)).convert("L")
+            moved = sum(1 for v in ImageChops.difference(a, b).getdata() if v > 25)  # 变了的像素数：远景里的小人跑动也算得出来
+            if moved < 30:
+                who = bt.get("who") or bt.get("prop")
+                out.append(f"WARN  {c} 镜{sh['id']} 第 {bt['t']:g} 秒「{who} {bt.get('do')}」：前后 0.9 秒只有 {moved} 个像素在变，白模里看不出这个动作")
+        rows.append((sh, [(t, fr(t)) for t in [t0 + 0.125 + i * 0.25 for i in range(int((t1 - t0) * 4))]], beat_ts))
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/STHeiti Medium.ttc", 18)
+    except Exception:
+        font = ImageFont.load_default()
+    W, H = frames[0].size
+    per = 10
+    lines = sum(max(1, (len(f) + per - 1) // per) for _, f, _ in rows)
+    sheet = Image.new("RGB", (W * per + 120, lines * (H + 4) + 4), (20, 20, 20))
+    d = ImageDraw.Draw(sheet)
+    y = 4
+    for sh, fs, beats in rows:
+        d.text((6, y + 4), f"镜{sh['id']}", fill=(240, 240, 240), font=font)
+        d.text((6, y + 28), sh["name"], fill=(200, 200, 200), font=font)
+        for i, (t, im) in enumerate(fs):
+            x = 120 + (i % per) * W
+            yy = y + (i // per) * (H + 4)
+            sheet.paste(im, (x, yy))
+            if any(abs(t - bt) <= 0.125 for bt in beats):
+                d.rectangle([x, yy, x + W - 1, yy + H - 1], outline=(230, 40, 40), width=3)
+        y += max(1, (len(fs) + per - 1) // per) * (H + 4)
+    sheet.save(os.path.join(proj, "logs", f"白模逐帧_{c}.jpg"), quality=85)
+    return out
 
 
 FF_RISK = re.compile(r"雨|湿|帽|纹身|眼镜|首饰|项链|耳环|戒指|文字|招牌|屏幕|镜子|面具|印章|徽章")
@@ -993,7 +1067,8 @@ def main():
         d["confirm"][a.args[0]] = now()
     elif a.cmd == "approve":
         kind, n = a.args
-        d["budget"][kind]["approved"] = d["budget"][kind]["used"] + int(n)
+        b = d["budget"].setdefault(kind, {"approved": 0, "used": 0})  # images：张数；video：元（tools/produce.py）
+        b["approved"] = b.get("used", 0) + int(n)
     elif a.cmd == "review":
         key, verdict = a.args[0], a.args[1]
         if key not in d["reviews"]:

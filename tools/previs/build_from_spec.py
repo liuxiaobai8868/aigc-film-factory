@@ -28,7 +28,15 @@ if "world_color" in SPEC:
 
 
 def keyed_times(keys):
-    return sorted(keys, key=lambda k: k["t"])
+    """按时间排序；同一时刻写了两个位置（切点上换了地方）时，前一个提前一帧。
+    Blender 一帧只留一个关键帧，不错开的话人会从前一个地方慢慢滑到后一个地方（《好日子》第 8 条：秀英从镜头前穿过去）。"""
+    ks = sorted(keys, key=lambda k: k["t"])
+    out = []
+    for i, k in enumerate(ks):
+        if i + 1 < len(ks) and abs(ks[i + 1]["t"] - k["t"]) < 1e-6:
+            k = dict(k, t=max(0.0, k["t"] - 1.0 / FPS))
+        out.append(k)
+    return out
 
 
 # 静态与可动方块：min/max 是初始包围盒；keys 里的 offset 是相对初始位置的位移，scale 是缩放倍数
@@ -42,18 +50,42 @@ for b in SPEC.get("boxes", []):
         key(o, k["t"], loc=tuple(base_loc[i] + off[i] for i in range(3)),
             scale=tuple(base_scale[i] * sc_mul[i] for i in range(3)))
 
-# 人物：圆柱 + 球头代理，keys 给出位置与朝向；lean 为前倾角
+# 人物：4.0 alpha.8 起默认用关节小人（rig），按 poses 做姿态，走动时自动摆臂摆腿；"rig": false 退回圆柱 + 球头
 aims = {}
 for p in SPEC.get("people", []):
     h = p.get("height", 1.70)
-    root = person(p["name"], tuple(p.get("color", (0.85, 0.25, 0.10))), h)
+    if p.get("shape") == "giant":  # 巨物形状代理：树干身子、根须、枝、空心环头（不做关节和姿态）
+        parts, root = None, giant(p["name"], tuple(p.get("color", (0.6, 0.35, 0.8))), h)
+    else:
+        use_rig = p.get("rig", SPEC.get("rig", True))
+        parts = rig(p["name"], tuple(p.get("color", (0.85, 0.25, 0.10))), h) if use_rig else None
+        root = parts["root"] if parts else person(p["name"], tuple(p.get("color", (0.85, 0.25, 0.10))), h)
     aim = bpy.data.objects.new(p["name"] + "_aim", None)
     bpy.context.collection.objects.link(aim)
     aims[p["name"]] = aim
-    for k in keyed_times(p["keys"]):
+    ks = keyed_times(p["keys"])
+    for k in ks:
         x, y, z = k["pos"]
         key(root, k["t"], loc=(x, y, z), rot=(-k.get("lean", 0), 0, k.get("face", 0)))
         key(aim, k["t"], loc=(x, y, z + 0.8 * h))
+    if p.get("shape") == "giant" and any(k.get("head") for k in ks):
+        giant_head(p["name"], tuple(p.get("color", (0.6, 0.35, 0.8))), h, ks)
+    if parts:
+        moving = []
+        for a, b in zip(ks, ks[1:]):
+            dt = b["t"] - a["t"]
+            dist = math.dist(a["pos"][:2], b["pos"][:2])
+            moving.append((a["t"], dist / dt if dt > 1e-6 else 0.0))
+        moving.append((ks[-1]["t"], 0.0))
+        p["_parts"], p["_moving"] = parts, moving
+# 道具先建（跟手、放下、摆动、出现消失），姿态最后加：伸手的目标可能是道具，也可能是别人的手
+for pr in SPEC.get("props", []):
+    aims["prop_" + pr["name"]] = prop_object(pr)  # 镜头可以盯住移动的道具（look_at: "prop_花轿"）
+for fx in SPEC.get("effects", []):  # 特效代理：碎石、裂缝、落屑、巨物的臂
+    effect(fx)
+for p in SPEC.get("people", []):
+    if p.get("_parts"):
+        apply_poses(p["_parts"], p["name"], p.get("height", 1.70), p.get("poses", []), dur, p["_moving"])
 
 
 def wobble(t, amp):
@@ -62,7 +94,7 @@ def wobble(t, amp):
 
 # 镜头：每个 shot 从 start 开始，到下一个 shot 的 start 结束；时间轴标记绑定相机实现硬切
 shots = sorted(SPEC["shots"], key=lambda s: s["start"])
-cams = []
+cams, eased = [], []  # eased：要缓入缓出的运镜机位（规格 ease: true）
 for i, s in enumerate(shots):
     c = camera(s.get("lens", 35))
     c.name = s.get("name", f"C{i + 1}")
@@ -70,6 +102,14 @@ for i, s in enumerate(shots):
     target = s.get("look_at")
     if target is not None:
         aim = aims.get(target) if isinstance(target, str) else None
+        if aim is not None and s.get("look_off"):  # 盯住移动道具上偏开一点的位置（轿子前沿），构图不是一整面墙
+            off = bpy.data.objects.new(c.name + "_target", None)
+            bpy.context.collection.objects.link(off)
+            off.location = tuple(s["look_off"])
+            cl = off.constraints.new("COPY_LOCATION")
+            cl.target = aim
+            cl.use_offset = True
+            aim = off
         if aim is None:
             aim = bpy.data.objects.new(c.name + "_target", None)
             bpy.context.collection.objects.link(aim)
@@ -86,6 +126,8 @@ for i, s in enumerate(shots):
         prev = max((k for k in ks if k["t"] <= t), key=lambda k: k["t"], default=ks[0])
         nxt = min((k for k in ks if k["t"] >= t), key=lambda k: k["t"], default=ks[-1])
         u = 0 if nxt["t"] == prev["t"] else (t - prev["t"]) / (nxt["t"] - prev["t"])
+        if s.get("ease") and amp:  # 手持叠在缓动的运镜上：逐点采样时自己缓
+            u = u * u * (3 - 2 * u)
         pos = [prev["pos"][j] + (nxt["pos"][j] - prev["pos"][j]) * u for j in range(3)]
         w = wobble(t, amp)
         pos = tuple(pos[j] + w[j] for j in range(3))
@@ -97,11 +139,16 @@ for i, s in enumerate(shots):
     if ks[-1]["t"] < end:
         key(c, end, loc=tuple(ks[-1]["pos"]), rot=ks[-1].get("rot", (90, 0, 0)) if target is None else (90, 0, 0))
     cams.append((s["start"], c))
+    if s.get("ease") and not amp and len(ks) > 1:
+        eased.append(c)
     m = sc.timeline_markers.new(c.name, frame=int(1 + s["start"] * FPS))
     m.camera = c
 sc.camera = cams[0][1]
 
 linear_all()
+ease_all(eased)
+if SPEC.get("light"):  # 光型（正午顶光、落日斜光……）：换 EEVEE + 太阳灯；没写 light 保持 Workbench 平光
+    apply_light(SPEC["light"])
 os.makedirs(OUT, exist_ok=True)
 if NO_RENDER:
     pass

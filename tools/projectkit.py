@@ -206,13 +206,19 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
         for k, sh in enumerate(c["shots"], 1):
             shots_prev.append(dict(sh["cam"], start=sh["t0"]))
             s = {"t0": sh["t0"], "t1": sh["t1"], "id": k, "name": sh["name"], "body": sh["body"]}
-            for key in ("allow_small", "new_axis", "allow_occlude", "struct"):
+            for key in ("allow_small", "new_axis", "allow_occlude", "allow_exit", "struct"):
                 if sh.get(key):
                     s[key] = sh[key]
             spec_shots.append(s)
         ratio = texts.get("RATIO", "16:9")
         prev = {"name": f"{short}_第{n}条", "duration": c["dur"], "fps": 24, "resolution": [720, 1280] if ratio == "9:16" else [1280, 720], "world_color": list(world_color),
                 "boxes": world_boxes + c.get("extra_boxes", []), "people": c["people"], "shots": shots_prev}
+        if c.get("props_previs"):
+            prev["props"] = c["props_previs"]
+        if c.get("effects_previs"):
+            prev["effects"] = c["effects_previs"]
+        if c.get("light_previs"):
+            prev["light"] = c["light_previs"]
         json.dump(prev, open(os.path.join(here, f"第{n}条.json"), "w", encoding="utf-8"), ensure_ascii=False)
         assets, geo, chars = [], [], []
         for t in c["tags"]:
@@ -232,7 +238,11 @@ def export(project_root, project, short, items, world_boxes, clips, texts, previ
                 chars.append(it["lock"])
         spec = {"schema": "aigc-shot-spec/1", "project": project, "clip": n, "title": c["title"], "duration": c["dur"], "ratio": ratio,
                 "resolution": "720p", "summary": c["summary"], "model_hint": c["model"],
-                "previs": f"预演/previs_{short}_第{n}条.mp4", "previs_spec": f"../预演规格/第{n}条.json", "previs_colors": previs_colors,
+                "previs": f"预演/previs_{short}_第{n}条.mp4", "previs_spec": f"../预演规格/第{n}条.json",
+                "previs_colors": previs_colors + ("，肉色小方块=特写里的手" if any(s.get("struct", {}).get("hand") for s in c["shots"]) else "")
+                + ("，浅米色小人=群演" if any(p["name"].startswith("群演") for p in c["people"]) else "")
+                + ("，有尺寸的灰白小块=道具（只取位置和动作）" if c.get("props_previs") else "")
+                + ("，跳动的小石块、飘落的小方片、张开的深色缝、伸长的长条=特效（碎石、纸屑、裂缝、巨物的臂，只取位置、方向和时机）" if c.get("effects_previs") else ""),
                 "assets": assets, "count": c["count"], "context": c["context"], "two_worlds": texts["THREE"], "style": c.get("style_zh", texts["STYLE"]),
                 "geo": geo, "chars": chars + c.get("extra_chars", []), "music": texts["MUSIC"], "sfx": c["sfx"],
                 "voices": [texts["VOICE"][v] for v in c.get("voices", [])], "lip": texts["LIP"], "shots": spec_shots,

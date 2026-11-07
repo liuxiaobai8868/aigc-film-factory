@@ -85,7 +85,7 @@
 
 ## 指令
 
-`~start [项目]` `~status` `~mode` `~genre`（类型菜单）`~tier`（时长档位与估价）`~expand <档位>`（扩写，docs/21 第四节）`~series`（剧集立项，docs/22）`~ep <集号>`（建集、跑一集）`~style` `~story` `~script` `~direct` `~look` `~sets` `~cast` `~acting` `~sound` `~dialogue` `~drama [场]` `~action [场]` `~vfx [场]` `~image` `~registry` `~assets` `~board [场]` `~compile [条]` `~qa [条]` `~approve [条]` `~qc [条]` `~post`（`tools/post.py` 粗剪、调色对齐、转场）`~mix` `~coldread <点>`（冷读，templates/冷读.md）`~help`（详见 `crew/00-showrunner/SKILL.md` 第八节）
+`~start [项目]` `~status` `~mode` `~genre`（类型菜单）`~tier`（时长档位与估价）`~expand <档位>`（扩写，docs/21 第四节）`~series`（剧集立项，docs/22）`~ep <集号>`（建集、跑一集）`~style` `~story` `~script` `~direct` `~look` `~sets` `~cast` `~acting` `~sound` `~dialogue` `~drama [场]` `~action [场]` `~vfx [场]` `~image` `~registry` `~assets` `~board [场]` `~compile [条]` `~qa [条]` `~approve [条]` `~qc [条]` `~post`（`tools/post.py` 粗剪、调色对齐、转场）`~mix` `~coldread <点>`（冷读，templates/冷读.md）`~produce`（自动出片：`tools/produce.py` plan / next / post，先报花费）`~help`（详见 `crew/00-showrunner/SKILL.md` 第八节）
 
 ## 初始化
 

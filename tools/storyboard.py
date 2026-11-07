@@ -23,7 +23,7 @@ sys.path.insert(0, HERE)
 import projectkit as K  # noqa: E402
 
 REC = "Image 2.5（APIMart 2K）"
-SIZES = {"大特写": (135, 0.6, 0.93), "特写": (85, 0.9, 0.92), "近景": (50, 1.4, 0.88), "中景": (50, 2.4, 0.8),
+SIZES = {"大特写": (135, 0.6, 0.93), "特写": (85, 1.3, 0.92), "近景": (50, 1.4, 0.88), "中景": (50, 2.4, 0.8),
          "全景": (35, 5.0, 0.6), "大全景": (24, 11.0, 0.55)}  # 景别 → (焦距, 机位距离 米, 机位高度占身高比例)
 TYPES = ("wide", "single", "ots", "insert", "track", "pov")
 MOVE = {"wide": "固定", "single": "固定", "ots": "过肩", "insert": "俯拍特写", "track": "跟拍", "pov": "主观视角"}
@@ -52,8 +52,14 @@ def shot_rank(s):
     return {"wide": 4, "insert": 1}.get(s.get("type"), 2 if s.get("type") == "single" else 3)
 PALETTE = [[0.95, 0.8, 0.15], [0.2, 0.35, 0.85], [0.85, 0.2, 0.15], [0.95, 0.6, 0.75], [0.3, 0.75, 0.4], [0.6, 0.35, 0.8]]
 PALETTE_ZH = ["黄", "蓝", "红", "粉", "绿", "紫"]
+# 精准白模（4.0 alpha.8）：节拍里能用的动作，和 tools/previs/common.py 的 POSES 一致
+POSE_NAMES = {"stand", "walk", "run", "sit", "sit_ground", "kneel", "kowtow", "bend", "crouch", "pick", "raise_arms", "carry", "hands_front",
+              "lean_back", "dragged", "fall", "nod", "comb", "pull", "struggle", "laugh", "reach", "grab", "give", "point", "hold", "look"}
+PROP_DOS = {"take", "put", "move", "swing", "show", "hide"}
+FORMATIONS = {"line", "rows", "column", "ring", "scatter"}
 BOXCOLOR = {"wood": [0.35, 0.25, 0.18], "white": [0.92, 0.92, 0.9], "stone": [0.45, 0.47, 0.5], "floor": [0.5, 0.5, 0.52],
-            "dark": [0.12, 0.12, 0.14], "red": [0.85, 0.12, 0.1], "gold": [1.0, 0.75, 0.2], "glass": [0.75, 0.8, 0.9]}
+            "dark": [0.12, 0.12, 0.14], "red": [0.85, 0.12, 0.1], "gold": [1.0, 0.75, 0.2], "glass": [0.75, 0.8, 0.9],
+            "skin": [0.86, 0.68, 0.56]}
 LIP = ("对白：普通话，自然口语。所有角色只说花括号里的台词；每句台词只有说话的那一个角色动嘴，其余角色闭着嘴；画外音不对任何人的口型；"
        "人声干净贴近，有人说话时配乐和环境声自动压低。画面全程是纯影像，没有字幕。")
 ANCHOR = "人物都是正常的人体结构：两只手各五根手指。"
@@ -108,7 +114,63 @@ def episode_dirs(season_root):
     return [(e["ep"], os.path.join(season_root, f"ep{e['ep']}")) for e in season.get("episodes", [])]
 
 
+_SHOT_T = re.compile(r"^镜(\d+)(?:([+-])(\d+(?:\.\d+)?)|(末))?$")
+_T_KEYS = ("t", "t0", "t1", "open_at", "tear_from", "ahead_until", "face_until")
+
+
+def _shot_times(board):
+    """走位、群演、道具、特效的时间可以写成"镜3+1.2"（第 3 镜开始后 1.2 秒）、"镜3-0.5"（第 3 镜结束前 0.5 秒）、"镜3末"。
+    改镜头时长时走位跟着镜头走，不会因为时间写死而把人挤成快进（《好日子》教训）。这里换算成整条的秒数。"""
+    for c in board.get("clips", []):
+        starts, t = [], 0.0
+        for sh in c.get("shots", []):
+            starts.append((t, t + sh.get("dur", 0)))
+            t += sh.get("dur", 0)
+
+        def conv(v, c=c, starts=starts):
+            if not isinstance(v, str):
+                return v
+            m = _SHOT_T.match(v.strip())
+            if not m:
+                return v
+            k = int(m.group(1))
+            if not 1 <= k <= len(starts):
+                raise Bad(f"第{c.get('n')}条 时间「{v}」：没有第 {k} 镜")
+            a, b = starts[k - 1]
+            if m.group(4):
+                return round(b, 3)
+            if not m.group(2):
+                return round(a, 3)
+            x = float(m.group(3))
+            return round(a + x if m.group(2) == "+" else b - x, 3)
+
+        def walk(o):
+            if isinstance(o, dict):
+                for k2, v in o.items():
+                    if k2 in _T_KEYS:
+                        o[k2] = conv(v)
+                    elif k2 == "back" and isinstance(v, list):
+                        o[k2] = [conv(x) for x in v]
+                    elif k2 not in ("shots",):
+                        walk(v)
+            elif isinstance(o, list):
+                for x in o:
+                    walk(x)
+        for key in ("cast", "extras", "prop_states", "effects"):
+            if key in c:
+                walk(c[key])
+    return board
+
+
 def load(proj):
+    bible, board = _load_raw(proj)
+    if board.get("_series", {}).get("mode") == "season":
+        for _ep, b in board["_series"]["episodes"]:
+            _shot_times(b)
+    return bible, _shot_times(board)
+
+
+def _load_raw(proj):
     kind = series_kind(proj)
     if kind == "episode":
         root = os.path.dirname(proj)
@@ -179,6 +241,9 @@ def validate(bible, board, models=("seedance",)):
             E.append(f"世界「{w}」的 recipe {v.get('recipe')} 不在 config/style_recipes.json（用 tools/mj_style.py --recipes 看）")
     if bible["people_recipe"] not in recipes:
         E.append(f"people_recipe {bible['people_recipe']} 不存在")
+    for w, v in bible["worlds"].items():  # 4.0 alpha.8：每个世界可以有自己的人物配方（白昼和黄昏的人不该写同一种光）
+        if v.get("people") and v["people"] not in recipes:
+            E.append(f"世界「{w}」的 people {v['people']} 不在 config/style_recipes.json")
     if need_en and not bible.get("music_en"):
         E.append("设定.json 缺 music_en：配乐的英文一两句（没有配乐写 \"N/A\"）" + EN)
     chars = char_map(bible)
@@ -449,9 +514,59 @@ def validate(bible, board, models=("seedance",)):
     leak_check(bible, board, E)
     for c in board.get("clips", []):
         for k, sh in enumerate(c.get("shots", []), 1):
-            for key in ("allow_occlude", "allow_small"):
+            for key in ("allow_occlude", "allow_small", "allow_exit"):
                 if key in sh and not isinstance(sh[key], list):
                     E.append(f"第{c.get('n')}条 镜{k} {key} 要写成名字列表，如 [\"程姐\"]（写 true 会让白模检查崩溃）")
+    precise = any(sh.get("beats") for c in board.get("clips", []) for sh in c.get("shots", []))
+    bprops = {p["name"]: p for p in bible.get("props", [])}
+    crowd_worlds = {c["world"] for c in bible.get("crowds", [])}
+    for c in board.get("clips", []):  # 精准白模（4.0 alpha.8）：节拍、群演、道具状态
+        loc = next((l for l in bible.get("locations", []) if l["name"] == c.get("location")), {})
+        marks = loc.get("stage", {}).get("marks", {})
+        ex_ids = {i for g in c.get("extras", []) for i in g.get("ids", [])}
+        who_ok = set(c.get("cast", {})) | {f"群演{i}" for i in ex_ids}
+        for g in c.get("extras", []):
+            if g.get("formation", "line") not in FORMATIONS:
+                E.append(f"第{c.get('n')}条 extras 的 formation 只能是 {sorted(FORMATIONS)}")
+            if any(not 1 <= i <= 14 for i in g.get("ids", [])):
+                E.append(f"第{c.get('n')}条 extras 的群演编号要在 1–14（对应群像图）")
+            for q in [g.get("at")] + [x.get("at") for x in g.get("path", [])]:
+                if q and isinstance(q, str) and q not in marks:
+                    E.append(f"第{c.get('n')}条 extras 用了不存在的站位点「{q}」")
+            if g.get("world", loc.get("world")) not in crowd_worlds:  # 远景里的同一批人可以借别的世界的群像（g.world），不必为几个小点再出一张图
+                E.append(f"第{c.get('n')}条 有 extras，但世界「{g.get('world', loc.get('world'))}」没有群像（docs/17）；远景小点可写 world 借用别的世界的群像")
+            for q in g.get("poses", []):
+                if q.get("pose") not in POSE_NAMES:
+                    E.append(f"第{c.get('n')}条 extras 的姿态「{q.get('pose')}」不在动作表里：{sorted(POSE_NAMES)}")
+        for nm, st in c.get("prop_states", {}).items():
+            if nm not in bprops:
+                E.append(f"第{c.get('n')}条 prop_states 里的道具「{nm}」不在设定的 props 里")
+        for k, sh in enumerate(c.get("shots", []), 1):
+            tag = f"第{c.get('n')}条 镜{k}"
+            for bt in sh.get("beats", []):
+                if not 0 <= bt.get("t", -1) <= sh.get("dur", 0):
+                    E.append(f"{tag} 节拍时间 {bt.get('t')} 不在这一镜的 0–{sh.get('dur')} 秒里（节拍时间从这一镜开头算）")
+                if bt.get("prop"):
+                    if bt["prop"] not in bprops:
+                        E.append(f"{tag} 节拍里的道具「{bt['prop']}」不在设定的 props 里")
+                    elif not bprops[bt["prop"]].get("size"):
+                        W.append(f"{tag} 道具「{bt['prop']}」没写 size: [宽, 深, 高]（米），白模按默认 0.3×0.2×0.1 做")
+                    if bt.get("do") not in PROP_DOS:
+                        E.append(f"{tag} 道具节拍的 do 只能是 {sorted(PROP_DOS)}")
+                    if bt.get("do") in ("take", "put", "move") and not bt.get("to"):
+                        E.append(f"{tag} 道具节拍 {bt.get('do')} 要写 to（take：人名.右手；put / move：站位点名）")
+                elif bt.get("who"):
+                    if bt["who"] not in who_ok:
+                        E.append(f"{tag} 节拍里的「{bt['who']}」不在这一条的 cast 或 extras 里")
+                    if bt.get("do") not in POSE_NAMES:
+                        E.append(f"{tag} 节拍动作「{bt.get('do')}」不在动作表里：{sorted(POSE_NAMES)}")
+                else:
+                    E.append(f"{tag} 节拍要写 who + do（人做什么）或 prop + do（道具怎么动）")
+            if precise and not sh.get("beats") and sh.get("type") != "wide":
+                acts = sh.get("action", [])
+                txt = " ".join(a.get("text", "") if isinstance(a, dict) else a for a in (acts if isinstance(acts, list) else [acts]))
+                if re.search(r"攥|抓|递|塞|拿|捡|推|拉|拽|跪|坐|弯腰|举|扑|咬|梳|放进|掀|挑|抬", txt):
+                    W.append(f"{tag} 动作里有手上或身体的动作，但没写 beats：白模不会演，模型会自由发挥")
     for c in board.get("clips", []):  # 后期字段（tools/post.py）
         tr = c.get("transition")
         if tr is not None and tr not in ("cut", "black", "dissolve"):
@@ -601,7 +716,7 @@ def look_check(bible, board, E, W):
     shots = [s for c in clips for s in c.get("shots", [])]
     if cards and shots:
         recs = {r for c in cards for r in c["风格配方"]}
-        used = {v.get("recipe") for v in bible.get("worlds", {}).values()} | {bible.get("people_recipe")}
+        used = {v.get("recipe") for v in bible.get("worlds", {}).values()} | {v.get("people") for v in bible.get("worlds", {}).values()} | {bible.get("people_recipe")}
         if not used & recs:
             W.append(f"世界和人物的风格配方 {sorted(x for x in used if x)} 都不在所选类型卡的配方 {sorted(recs)} 里：确认是有意混搭，或换配方（docs/21）")
         lo = min(c["剪辑"]["平均镜长"][0] for c in cards)
@@ -817,7 +932,24 @@ class Clip:
         pts = cv["path"] if "path" in cv else [dict(cv, t=0)]
         return pts
 
+    DROP = {"sit": 0.24, "sit_ground": 0.46, "kneel": 0.25, "kowtow": 0.55, "crouch": 0.22, "bend": 0.2, "pick": 0.38}
+
+    def drop(self, name, t):
+        """节拍里的坐、跪、蹲、弯腰让头变低：机位按变低的头算（4.0 alpha.8）。"""
+        best = 0.0
+        for b in self.beats():
+            if b.get("who") == name and b.get("do") in self.DROP:
+                t1 = b["_t"] + b["dur"] if b.get("dur") else (10 ** 6 if b.get("hold") else b["_end"])
+                if b["_t"] <= t + 0.4 <= t1 + 0.4:
+                    best = max(best, self.DROP[b["do"]])
+        return best * (self.chars[name]["height"] if name in self.chars else 1.7)
+
     def pos(self, name, t):
+        p = self._pos(name, t)
+        dz = self.drop(name, t) if name in self.chars and "beats" in str(self.c.get("shots")) else 0.0
+        return [p[0], p[1], p[2] - dz] if dz else p
+
+    def _pos(self, name, t):
         pts = self.path(name)
         prev = pts[0]
         for p in pts:
@@ -858,7 +990,239 @@ class Clip:
             dur = sum(s["dur"] for s in self.c["shots"])
             keys.append((dur, keys[-1][1], keys[-1][2], keys[-1][3]))
             ci = [c["name"] for c in self.b["characters"] if c.get("kind") != "voice"].index(self.chars[name].get("_base", name))  # 和投喂包里的识别色说明同一套编号
-            out.append(K.person(name, PALETTE[ci % len(PALETTE)], self.height(name), keys))
+            per = K.person(name, PALETTE[ci % len(PALETTE)], self.height(name), keys)
+            if self.chars[name].get("kind") == "giant":
+                per["shape"] = "giant"  # 白模用巨物形状代理（树干、根须、空心头），不是放大的小人
+                for k, p in zip(per["keys"], self.path(name)):  # head_at：巨物俯身，空心头落到这个站位点（cast 或路径点上写）
+                    ha = p.get("head_at", self.c["cast"][name].get("head_at"))
+                    if ha:
+                        k["head"] = self.pt(ha)
+                if per["keys"][-2].get("head"):
+                    per["keys"][-1]["head"] = per["keys"][-2]["head"]
+            poses = [b for b in self.beat_poses() if b["who"] == name]
+            if poses:
+                per["poses"] = [{k: v for k, v in b.items() if k != "who"} for b in poses]
+            out.append(per)
+        return out + self.extras()
+
+    def light_previs(self):
+        """白模的光型：场景写了 previs_light 用它（"sunset" 或 {"preset": "sunset", "from": [1, -0.3]}），
+        否则从光逻辑的字里认：夜 / 黄昏后的天光 / 落日斜光 / 正午顶光 / 清晨 / 阴天。认不出就不打光（Workbench 平光）。"""
+        lp = self.loc.get("previs_light")
+        if lp:
+            return {"preset": lp} if isinstance(lp, str) else dict(lp)
+        txt = self.loc.get("light", "")
+        for preset, words in (("night", ("夜", "月光")), ("dusk", ("落日后", "黄昏", "暮色", "傍晚", "日落后")),
+                              ("sunset", ("落日", "夕阳", "斜阳", "日落", "晚霞")), ("noon", ("正午", "顶光", "当头", "烈日", "午后")),
+                              ("dawn", ("晨", "清早", "日出", "朝阳")), ("overcast", ("阴天", "阴云", "雨"))):
+            if any(w in txt for w in words):
+                return {"preset": preset}
+        return None
+
+    # ---------- 精准白模（4.0 alpha.8）：节拍、群演、道具 ----------
+    def _target(self, tg, do="reach"):
+        """节拍里的 target：人名（看 → 头，其余 → 右手）、人名.头 / 人名.右手 / 人名.左手、站位点名、道具名、[x,y,z]。"""
+        if tg is None:
+            return None
+        if isinstance(tg, list):
+            return self.pt(tg)
+        who, _, part = tg.partition(".")
+        names = set(self.c.get("cast", {})) | {f"群演{i}" for g in self.c.get("extras", []) for i in g.get("ids", [])}
+        if who in names:
+            part = part or ("头" if do in ("look", "nod", "point") else "右手")
+            return f"{who}:" + {"头": "head", "右手": "handR", "左手": "handL", "手": "handR"}.get(part, "head")
+        if tg in self.marks:
+            return self.marks[tg]
+        if tg in {p["name"] for p in self.b.get("props", [])}:
+            return "prop_" + tg
+        raise Bad(f"节拍的目标「{tg}」既不是人、站位点，也不是道具")
+
+    def beats(self):
+        t0, out = 0.0, []
+        for s in self.c["shots"]:
+            for b in s.get("beats", []):
+                out.append(dict(b, _t=round(t0 + b["t"], 3), _end=round(t0 + s["dur"], 3)))
+            t0 += s["dur"]
+        return out
+
+    def beat_poses(self):
+        out = []
+        for b in self.beats():
+            if not b.get("who") or not b.get("do"):
+                continue
+            t1 = b["_t"] + b["dur"] if b.get("dur") else b["_end"]
+            if b.get("hold"):
+                t1 = sum(s["dur"] for s in self.c["shots"])
+            item = {"who": b["who"], "t0": b["_t"], "t1": round(t1, 3), "pose": b["do"]}
+            if b.get("target") is not None:
+                item["target"] = self._target(b["target"], b["do"])
+            if b.get("look") is not None:
+                item["look"] = self._target(b["look"], "look")
+            if b.get("arm"):
+                item["arm"] = b["arm"]
+            out.append(item)
+        return out
+
+    def extras(self):
+        """群演进白模：clip 的 extras 是一组组群演，按队形站位、可以沿路径走、按时间换姿态。"""
+        groups = self.c.get("extras", [])
+        if not groups:
+            return []
+        dur = sum(s["dur"] for s in self.c["shots"])
+        out = []
+        for gi, g in enumerate(groups):
+            world = g.get("world", self.loc["world"])
+            roster = next((c["roster"] for c in self.b.get("crowds", []) if c["world"] == world), [])
+            ids = g["ids"]
+            n = len(ids)
+            sp = g.get("spacing", 0.9)
+            path = g.get("path") or [{"t": 0, "at": g["at"]}]
+
+            def anchor(t, path=path):
+                prev = path[0]
+                for q in path:
+                    if q["t"] <= t:
+                        prev = q
+                    else:
+                        f = (t - prev["t"]) / (q["t"] - prev["t"])
+                        return _lerp(self.pt(prev["at"]), self.pt(q["at"]), f)
+                return self.pt(prev["at"])
+            times = sorted({0.0, dur} | {q["t"] for q in path} | {x for k in ("t0", "t1") for x in [g.get(k)] if x is not None})
+            dup = {q["t"] for q in path if sum(1 for x in path if abs(x["t"] - q["t"]) < 1e-9) > 1}
+            times = sorted(set(times) | {round(t - 0.05, 3) for t in dup if t > 0.05})  # 同一时刻两个位置 = 切点上换了地方：前一帧还在原处，不要慢慢走过去
+            pose_list = g.get("poses", [])
+            for i, cid in enumerate(ids):
+                name = f"群演{cid}"
+                hm = re.search(r"(\d{3}) cm", roster[cid - 1][1]) if 0 < cid <= len(roster) else None
+                h = int(hm.group(1)) / 100 if hm else 1.68
+                keys = []
+                last = None  # 停下来时保持最后走的方向，不要突然转回默认朝向
+                last_rt = None
+                for t in times:
+                    a = anchor(t)
+                    ft = g.get("face") if t <= g.get("face_until", 1e9) else None  # face_until 之后朝走的方向（跪拜完转身下山）
+                    fp = (self.pos(ft, t) if ft in self.c.get("cast", {}) else self.pt(ft)) if ft else None
+                    if fp is None and len(path) > 1:
+                        nxt = anchor(min(dur, t + 0.5))
+                        if math.dist(nxt[:2], a[:2]) > 1e-3:
+                            fp = nxt
+                        elif last:
+                            fp = [a[0] + last[0], a[1] + last[1], a[2]]
+                        else:  # 开场站着、过一会儿才走：先朝着要走的方向，起步时队形不会整个转一圈
+                            fut = next((anchor(q["t"]) for q in path if q["t"] > t and math.dist(anchor(q["t"])[:2], a[:2]) > 1e-3), None)
+                            if fut:
+                                fp = fut
+                    fp = fp or [a[0], a[1] - 1, a[2]]
+                    fwd = [fp[0] - a[0], fp[1] - a[1]]
+                    L = math.hypot(*fwd) or 1.0
+                    fwd = [fwd[0] / L, fwd[1] / L]
+                    last = fwd
+                    rt = [fwd[1], -fwd[0]]
+                    if last_rt and rt[0] * last_rt[0] + rt[1] * last_rt[1] < 0:  # 掉头走：左右不跟着镜像，否则两个人会从中间那个人身上穿过去（《好日子》第 6 条崖边）
+                        rt = [-rt[0], -rt[1]]
+                    last_rt = rt
+                    if g.get("ahead") and t <= g.get("ahead_until", 1e9) + 1e-6:  # 抬轿、抬箱：前一组在道具前面 ahead 米，后一组写负数，人不站进道具里（《好日子》第 6 条）
+                        a = [a[0] + fwd[0] * g["ahead"], a[1] + fwd[1] * g["ahead"], a[2]]
+                        if fp is not None and not ft:
+                            fp = [fp[0] + fwd[0] * g["ahead"], fp[1] + fwd[1] * g["ahead"], fp[2]]
+                    kind = g.get("formation", "line")
+                    if kind in ("line", "rows", "column"):
+                        cols = 1 if kind == "column" else (g.get("cols", n) if kind == "rows" else n)
+                        r, c = divmod(i, cols)
+                        lat = (c - (cols - 1) / 2) * sp
+                        back = r * sp * (1.4 if kind == "rows" else 1.0)
+                        pos = [a[0] + rt[0] * lat - fwd[0] * back, a[1] + rt[1] * lat - fwd[1] * back, a[2]]
+                        face = fp if kind != "column" else [pos[0] + fwd[0], pos[1] + fwd[1], pos[2]]
+                    else:
+                        rad = g.get("radius", 2.0)
+                        if g.get("radius_to") is not None and g.get("t1") is not None:
+                            u = min(1.0, max(0.0, (t - g.get("t0", 0)) / max(0.01, g["t1"] - g.get("t0", 0))))
+                            rad += (g["radius_to"] - rad) * min(1.0, max(0.0, u * n / max(1, n - 1) - i / max(1, n)))  # 一个接一个往外退
+                        ang = 2 * math.pi * i / n + g.get("angle0", 0)
+                        pos = [a[0] + rad * math.cos(ang), a[1] + rad * math.sin(ang), a[2]]
+                        face = a if kind == "ring" else [2 * pos[0] - a[0], 2 * pos[1] - a[1], pos[2]]
+                    keys.append((t, pos, face, 0))
+                tint = 0.72 + 0.04 * (cid % 4)
+                per = K.person(name, [tint, tint * 0.96, tint * 0.86], h, keys)
+                poses = [dict(t0=round(q["t0"] + i * q.get("stagger", 0), 3), t1=q["t1"], pose=q["pose"]) for q in pose_list]
+                poses += [{k: v for k, v in b.items() if k != "who"} for b in self.beat_poses() if b["who"] == name]
+                if poses:
+                    per["poses"] = poses
+                out.append(per)
+        return out
+
+    def effects_previs(self):
+        """clip 的 effects：[{kind: debris|split|fall|reach, t0, t1, at: 站位点或坐标, to?, color?: BOXCOLOR 名, …}] → 白模特效代理。"""
+        out = []
+        for e in self.c.get("effects", []):
+            q = dict(e)
+            q["at"] = self.pt(e["at"])
+            if e.get("to"):
+                q["to"] = self.pt(e["to"])
+            q["color"] = BOXCOLOR.get(e.get("color", "stone"), BOXCOLOR["stone"]) if isinstance(e.get("color", "stone"), str) else e["color"]
+            out.append(q)
+        return out
+
+    def props_previs(self):
+        """会动的道具：clip 的 prop_states 给初始位置（站位点名，或"人名.右手"拿在手里），节拍里 prop + do 让它被拿、放、移、摆、出现、消失。"""
+        states = self.c.get("prop_states", {})
+        pb = [b for b in self.beats() if b.get("prop")]
+        names = list(dict.fromkeys(list(states) + [b["prop"] for b in pb]))
+        props = {p["name"]: p for p in self.b.get("props", [])}
+        out = []
+        for nm in names:
+            pr = props[nm]
+            st = states.get(nm, {})
+            spec = {"name": nm, "size": pr.get("size", [0.3, 0.2, 0.1]), "color": BOXCOLOR.get(pr.get("proxy_color", "white"), BOXCOLOR["white"]), "keys": []}
+            for k in ("open", "open_at", "tear_from"):
+                if st.get(k) is not None:
+                    spec[k] = st[k]
+            at = st.get("at")
+            for q in st.get("path", []):  # 沿路径走（被抬着的花轿、被开走的车）
+                spec["keys"].append({"t": q["t"], "at": self.pt(q["at"])})
+            if st.get("path") and not at:
+                at = st["path"][0]["at"]
+            if at and "." in at:
+                spec["at"] = [0, 0, -50]
+                spec["keys"].append({"t": 0, "attach": self._target(at, "hold")})
+            else:
+                spec["at"] = self.pt(at) if at else [0, 0, -50]
+            held = at if at and "." in at else None  # 现在拿在谁手里（"人名.右手"），move 之前要先松开
+
+            def near(tg, t):  # 被拿着的道具大概在哪：头顶或手的位置
+                who, _, part = tg.partition(".")
+                p0 = self.pos(who, t)
+                h = self.chars[who]["height"] if who in self.chars else 1.7
+                return [p0[0], p0[1], p0[2] + (0.9 * h if part == "头" else 0.55 * h)]
+            for b in sorted((b for b in pb if b["prop"] == nm), key=lambda b: b["_t"]):
+                t, do = b["_t"], b["do"]
+                if do == "take":
+                    spec["keys"].append({"t": t, "attach": self._target(b["to"], "hold")})
+                    held = b["to"]
+                elif do == "put":
+                    spec["keys"].append({"t": t, "detach": self.pt(b["to"])})
+                    held = None
+                elif do == "move":
+                    start = near(held, t) if held else (spec["keys"][-1].get("at") or spec["keys"][-1].get("detach") if spec["keys"] else spec["at"]) or spec["at"]
+                    spec["keys"].append({"t": t, "detach": start} if held else {"t": t, "at": start})
+                    spec["keys"].append({"t": round(t + b.get("dur", 1.0), 3), "at": self.pt(b["to"])})
+                    held = None
+                elif do == "swing":
+                    spec.setdefault("swing", []).append({"t0": t, "t1": round(t + b.get("dur", 2.0), 3), "amp": b.get("amp", 15), "hz": b.get("hz", 1.0)})
+                elif do in ("show", "hide"):
+                    spec.setdefault("_vis", []).append((t, do))
+            if spec.get("_vis"):
+                vis, on = [], 0.0 if not any(d == "show" for _, d in spec["_vis"]) else None
+                for t, d in spec.pop("_vis"):
+                    if d == "show":
+                        on = t
+                    elif on is not None:
+                        vis.append([on, t])
+                        on = None
+                if on is not None:
+                    vis.append([on, sum(s["dur"] for s in self.c["shots"])])
+                spec["visible"] = vis
+            out.append(spec)
         return out
 
     def boxes(self):
@@ -878,6 +1242,8 @@ class Clip:
             cm["handheld"] = 0.015
             return cm
         cm["keys"].append({"t": t0 + s["dur"], "pos": self.move_end(cm["keys"][0]["pos"], cm["look_at"], mv)})
+        if mv.get("speed") != "steady":  # 推拉摇升降：起步和收尾缓一点，像真的轨道和摇臂（匀速的不缓）
+            cm["ease"] = True
         return cm
 
     @staticmethod
@@ -907,8 +1273,14 @@ class Clip:
         t, size = s["type"], s.get("size")
         if s.get("cam"):  # 逃生口：直接给机位
             c = s["cam"]
-            return K.cam(t0, c.get("lens", 35), self.pt(c["pos"]), self.pt(c["look"]), self.pt(c["end"]) if c.get("end") else None,
-                         t0 + s["dur"] if c.get("end") else None)
+            lk = c["look"] if isinstance(c["look"], str) and (c["look"].startswith("prop_") or c["look"] in self.c.get("cast", {})) else self.pt(c["look"])  # "prop_花轿" / 人名：镜头盯住移动的道具或人，look_off 偏开一点（盯脚写 [0, 0, -1.2]）
+            cm = K.cam(t0, c.get("lens", 35), self.pt(c["pos"]), lk, self.pt(c["end"]) if c.get("end") else None,
+                       t0 + s["dur"] if c.get("end") else None)
+            if c.get("look_off"):
+                cm["look_off"] = c["look_off"]
+            if c.get("end") and not isinstance(lk, str) and c.get("ease", True):  # 盯固定点的手写运镜缓入缓出；跟着移动的人或道具走的保持匀速，不然构图前后漂
+                cm["ease"] = True
+            return cm
         if t == "wide":
             e = self.loc["stage"]["views"][s["view"]] if s.get("view") else self.loc["stage"]["establish"]
             p, lk, lens = self.pt(e["pos"]), self.pt(e["look"]), e.get("lens", 35)
@@ -919,6 +1291,10 @@ class Clip:
         subj = s.get("subject")
         if t == "insert":
             o = self.pt(s["object"])
+            if s.get("aim"):  # 对准人身上的点（"秀英.脚" / "秀英.手"），取这一镜中间时刻的位置：人在走、在被拖，静态标记点会对空（《好日子》第 6 条镜 8）
+                who, part = (s["aim"].split(".") + ["脚"])[:2]
+                q = self.pos(who, t0 + s["dur"] * s.get("aim_t", 0.5))  # aim_t：取这一镜里哪个时刻的位置（0–1，默认中间）
+                o = [q[0], q[1], 0.05 if part == "脚" else 0.5 * self.height(who)]
             off = s.get("cam_offset", [0.0, -0.45, 0.6])
             return K.cam(t0, 50, K.add(o, off), o)
         h = self.height(subj)
@@ -1018,7 +1394,7 @@ class Clip:
         pair = next(((s["fg"], s["subject"]) for s in self.c["shots"] if s["type"] == "ots"), None)
         return (self.pos(pair[0], t), self.pos(pair[1], t)) if pair else None
 
-    def body(self, s, lens):
+    def body(self, s, lens, t0=0.0):
         b, t = [], s["type"]
         world = self.loc["world"]
         if t == "ots":
@@ -1033,11 +1409,18 @@ class Clip:
         head = "画面里：" + "、".join(b) + "。"
         deg = K.LENS_DEG.get(lens, f"{lens}mm")
         mv = s.get("move")
-        mtxt = MOVE[t] if not mv else (move_text(mv) if t in ("wide", "single") else f"{MOVE[t]}，{move_text(mv)}")
+        base = MOVE[t]
+        if t == "insert":  # 插入镜头按 cam_offset 写俯拍 / 仰拍；景别不是特写时不写"特写"（《好日子》第 7 条仰拍岩壁裂缝）
+            off = s.get("cam_offset", [0.0, -0.45, 0.6])
+            base = ("仰拍" if off[2] < 0 else "俯拍") + ("特写" if s.get("size") in (None, "特写", "大特写") else "")
+        mtxt = base if not mv else (move_text(mv) if t in ("wide", "single") else f"{base}，{move_text(mv)}")
         parts = [f"{deg}，{s.get('size', '') + '，' if s.get('size') else ''}{mtxt}"]
         acts = s.get("action", [])
         for a in (acts if isinstance(acts, list) else [acts]):
             parts.append(f"第 {a['at']} 秒，{a['text']}" if isinstance(a, dict) and "at" in a else (a["text"] if isinstance(a, dict) else a))
+        for bt in s.get("beats", []):  # 节拍的文字和白模同一个来源：第几秒、谁、做什么
+            if bt.get("text"):
+                parts.append(f"第 {round(t0 + bt['t'], 2):g} 秒，{bt['text']}")  # 整条的秒数，和时间轴、白模一致（节拍里的 t 是镜内秒数）
         if s.get("hit"):
             h = s["hit"]
             parts.append(f"动作因果：{h['support']}，{h['force']}，{h['contact']}，{h['reaction']}，{h['result']}")
@@ -1053,17 +1436,37 @@ class Clip:
         out = head + "；".join(parts) + (f"；{snd}" if snd else "")
         return out if out.endswith("}") else out + "。"
 
+    def proxies(self):
+        """插入镜头的白模代理物（4.0 alpha.8，《好日子》实测）：白模里没有道具和手，特写就只拍到地面、桌面、墙，
+        模型拿到一段灰屏当 @视频1。每个插入镜头在 object 点放一块灰白方块（道具），写了 hand 再放一块肉色小块（手），只在这一镜出现。
+        尺寸可用 proxy: [宽, 深, 高]、颜色 proxy_color 覆盖。"""
+        out, t0 = [], 0.0
+        for k, s in enumerate(self.c["shots"], 1):
+            t1 = t0 + s["dur"]
+            if s["type"] == "insert" and s.get("object") and not s.get("no_proxy") and not s.get("beats"):  # 有节拍的特写用真的手和道具
+                p = self.pt(s["object"])
+                w, d, h = s.get("proxy", [0.32, 0.24, 0.12])
+                keys = K.appear(max(t0, 0.02), t1)
+                out.append(K.b(f"代理_{k}_{s['object']}", [p[0] - w / 2, p[1] - d / 2, p[2]], [p[0] + w / 2, p[1] + d / 2, p[2] + h],
+                               BOXCOLOR.get(s.get("proxy_color", "white"), BOXCOLOR["white"]), keys))
+                if s.get("hand"):
+                    out.append(K.b(f"代理_{k}_手", [p[0] + 0.06, p[1] - 0.2, p[2] + h], [p[0] + 0.15, p[1] - 0.02, p[2] + h + 0.05], BOXCOLOR["skin"], keys))
+            t0 = t1
+        return out
+
     def build(self, assets_idx):
         shots, t0 = [], 0.0
         for k, s in enumerate(self.c["shots"], 1):
             cm = self.camera(s, t0)
-            sh = dict(t0=round(t0, 3), t1=round(t0 + s["dur"], 3), name=s.get("name", f"镜{k}"), lens=cm["lens"], cam=cm, body=self.body(s, cm["lens"]))
+            sh = dict(t0=round(t0, 3), t1=round(t0 + s["dur"], 3), name=s.get("name", f"镜{k}"), lens=cm["lens"], cam=cm, body=self.body(s, cm["lens"], t0))
             glass = [f"{self.loc['name']}_{bx['name']}" for bx in self.loc["stage"].get("boxes", []) if bx.get("color") == "glass"]
             occ = list(s.get("allow_occlude", [])) + glass  # 玻璃是透明的，挡在前面不算遮挡
             if occ:
                 sh["allow_occlude"] = occ
             if s.get("allow_small"):
                 sh["allow_small"] = s["allow_small"]
+            if s.get("allow_exit"):
+                sh["allow_exit"] = s["allow_exit"]
             acts = s.get("action", [])
             acts = acts if isinstance(acts, list) else [acts]
             sh["struct"] = {k: v for k, v in dict(
@@ -1071,7 +1474,7 @@ class Clip:
                 object=s.get("object"), object_en=s.get("object_en"), hand=s.get("hand"), hand_en=s.get("hand_en"), view=s.get("view"),
                 action=[{"at": a.get("at"), "zh": a.get("text"), "en": a.get("en")} if isinstance(a, dict) else {"zh": a} for a in acts],
                 line=s.get("line"), sound=[{"zh": x.get("text"), "en": x.get("en"), "source": x.get("source")} for x in s.get("sound", []) if isinstance(x, dict)],
-                crowd=s.get("crowd"), hit_en=(s.get("hit") or {}).get("en"), vfx_en=(s.get("vfx") or {}).get("en"),
+                crowd=s.get("crowd"), beats=s.get("beats"), hit_en=(s.get("hit") or {}).get("en"), vfx_en=(s.get("vfx") or {}).get("en"),
                 move=({"kind": s["move"]["kind"], "en": move_text(s["move"], "en")} if s.get("move") and s["move"].get("kind") in MOVES else None)).items() if v}  # 结构化镜头：可灵 / 海螺 / 万相的专用编译器用
             shots.append(sh)
             t0 += s["dur"]
@@ -1098,7 +1501,7 @@ class Clip:
                     sfx=" ".join(f"<{x['text']}>" for s in c["shots"] for x in s.get("sound", [])) or "无",
                     constraint=axis_txt + c.get("constraint", "") + "".join(
                         f"道具操作（{p['name']}）：{p['mechanism']}。" for p in self.b.get("props", []) if p["name"] in c.get("props", []) and p.get("mechanism")), axis={"a": ots["fg"], "b": ots["subject"]} if ots else None,
-                    people=self.people(), shots=shots, extra_boxes=[], fail=c.get("fail", "人物脸和服装与参考图不一致；画面出现文字。"),
+                    people=self.people(), shots=shots, extra_boxes=self.proxies(), props_previs=self.props_previs(), effects_previs=self.effects_previs(), light_previs=self.light_previs(), fail=c.get("fail", "人物脸和服装与参考图不一致；画面出现文字。"),
                     risk=c.get("risk", "—"), splice=c.get("splice", "—"), summary_en=c.get("summary_en"),
                     style_en=self.style_en)
 
@@ -1261,10 +1664,11 @@ def build_specs(proj):
         cl = Clip(bible, c, loc_index[c["location"]])
         world = cl.loc["world"]
         vid = lambda x: x.replace(" still;", " footage;").replace(" still ", " footage ").replace("still shot on", "footage shot on")  # noqa: E731  配方原是出图用语
-        cl.style_en = f"Setting look: {vid(en[world])}." + (f" People look: {vid(en['__people__'])}." if en["__people__"] != en[world] else "")
         rz = {r["id"]: r for r in json.load(open(os.path.join(ROOT, "config", "style_recipes.json"), encoding="utf-8"))["配方"]}  # 每条只写本条所在世界的质感（docs/16）
-        wr, pr = bible["worlds"][world]["recipe"], bible["people_recipe"]
-        style_zh = f"质感：{world}（{wr}）：{rz[wr]['zh']}；人物（{pr}）：{rz[pr]['zh']}。"
+        wr = bible["worlds"][world]["recipe"]
+        pr = bible["worlds"][world].get("people", bible["people_recipe"])  # 世界可以覆盖人物配方；和世界相同就只写一次
+        cl.style_en = f"Setting look: {vid(en[world])}." + (f" People look: {vid(rz[pr]['en'])}." if rz[pr]["en"] != en[world] else "")
+        style_zh = f"质感：{world}（{wr}）：{rz[wr]['zh']}" + (f"；人物（{pr}）：{rz[pr]['zh']}。" if pr != wr else "。")
         clips.append(cl.build(idx))
         clips[-1]["style_zh"] = style_zh
         cm = char_map(bible)
@@ -1288,7 +1692,8 @@ def build_specs(proj):
     if voice_en:
         texts["VOICE_EN"] = voice_en
     os.makedirs(os.path.join(proj, "预演规格"), exist_ok=True)
-    colors = "，".join(f"{PALETTE_ZH[i % 6]}色圆柱={c['name']}" for i, c in enumerate(x for x in bible["characters"] if x.get("kind") != "voice")) + "，灰白方块=场景和道具"
+    colors = "，".join((f"{PALETTE_ZH[i % 6]}色树干巨物（根须、空心环头）={c['name']}" if c.get("kind") == "giant" else f"{PALETTE_ZH[i % 6]}色圆柱={c['name']}")
+                       for i, c in enumerate(x for x in bible["characters"] if x.get("kind") != "voice")) + "，灰白方块=场景和道具"
     K.export(proj, bible["title"], bible["short"], its, boxes, clips, texts, colors)
     return len(clips), W
 

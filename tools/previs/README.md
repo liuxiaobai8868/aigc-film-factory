@@ -28,10 +28,15 @@ python3 tools/previs/render_previs.py tools/previs/examples/示例_门口对峙.
      "keys": [{"t": 0, "pos": [0, 100, 0], "face": 180, "lean": 15},   // face：绕 Z 的角度，0 = 正面朝 -Y，180 = 朝 +Y；lean：前倾角
               {"t": 18, "pos": [0, 0.4, 0], "face": 180}]}
   ],
+  // 巨物："shape": "giant" 时不用小人，换成树干身子 + 外撇根须 + 四根斜枝 + 空心环头 + 几圈浅色布带（名字仍是 <名>_body / <名>_head）；
+  //       keys 里写 "head": [x,y,z] 的时刻，空心头落到那个点，脖子从树干顶拉到环顶（俯身）
+  "light": {"preset": "sunset", "from": [1, -1]},   // 可选：光型 noon / dawn / sunset / dusk / overcast / night，可覆盖 elev、energy、sun、sky、sky_strength；
+                                                    //       写了就换 EEVEE + 太阳灯（真影子，物体照旧用识别色），不写保持 Workbench 平光
   "shots": [                        // 镜头：从 start 开始，到下一个镜头的 start 硬切
     {"start": 0, "lens": 85, "keys": [{"t": 0, "pos": [0, -14, 9], "rot": [83, 0, 0]}]},       // 固定机位：rot = [俯仰(90 为平视), 0, 水平朝向]
     {"start": 4, "lens": 50, "look_at": "岚", "handheld": 0.04,                                 // look_at：人名（盯胸口）或 [x,y,z]；handheld：手持晃动幅度（米）
-     "keys": [{"t": 4, "pos": [-4, 91, 1.1]}, {"t": 9, "pos": [-4, 66, 1.1]}]}                 // 两个以上关键帧 = 运镜，之间线性插值
+     "keys": [{"t": 4, "pos": [-4, 91, 1.1]}, {"t": 9, "pos": [-4, 66, 1.1]}],                // 两个以上关键帧 = 运镜，之间线性插值
+     "ease": true}                                                                               // 可选：缓入缓出（两端平的贝塞尔）；跟拍移动的人或道具时不要加，构图会漂
   ]
 }
 ```
